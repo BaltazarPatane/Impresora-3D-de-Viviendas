@@ -15,6 +15,10 @@
 Additional documentation can be found at the [Marlin Home Page](//marlinfw.org/).
 Please test this firmware and let us know if it misbehaves in any way. Volunteers are standing by!
 
+# Comentario del editor
+Este firmware fue modificado por Baltazar Patané para la impresora 3D de viviendas de la UNLP. Debido a que no sigue el flujo normal de edición que sugieren los desarrolladores de Marlin, agregué una etiqueta "BALTA" cada vez que algo fue modificado o que algo podría ser de interés para
+futuros cambios.
+
 ## Marlin 2.1
 
 Marlin 2.1 continues to support both 32-bit ARM and 8-bit AVR boards while adding support for up to 9 coordinated axes and to up to 8 extruders.
