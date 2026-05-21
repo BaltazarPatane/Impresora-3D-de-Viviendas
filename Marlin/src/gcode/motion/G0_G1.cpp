@@ -22,6 +22,7 @@
 
 #include "../gcode.h"
 #include "../../module/motion.h"
+#include "../../module/planner.h"
 
 #include "../../MarlinCore.h"
 
@@ -41,9 +42,147 @@ extern xyze_pos_t destination;
   feedRate_t fast_move_feedrate = MMM_TO_MMS(G0_FEEDRATE);
 #endif
 
+
+// Tabla generada desde MATLAB
+// Correccion X en funcion de Z
+// Z en mm, X en mm
+static const int N_TABLA_XZ = 50;
+static const float Z_TABLE[N_TABLA_XZ] = {
+  0.0000f,
+  66.3394f,
+  132.5068f,
+  196.8724f,
+  262.6313f,
+  328.1487f,
+  393.4010f,
+  458.3651f,
+  521.4448f,
+  585.7714f,
+  649.7409f,
+  713.3304f,
+  776.5171f,
+  837.7526f,
+  900.0767f,
+  961.9305f,
+  1023.2918f,
+  1084.1382f,
+  1142.9833f,
+  1202.7477f,
+  1261.9320f,
+  1320.5144f,
+  1378.4735f,
+  1434.3979f,
+  1491.0632f,
+  1547.0423f,
+  1602.3146f,
+  1655.5380f,
+  1709.3537f,
+  1762.4022f,
+  1814.6636f,
+  1866.1182f,
+  1915.5220f,
+  1965.3262f,
+  2014.2669f,
+  2062.3254f,
+  2109.4835f,
+  2154.6062f,
+  2199.9325f,
+  2244.3055f,
+  2287.7080f,
+  2330.1233f,
+  2370.5368f,
+  2410.9533f,
+  2450.3344f,
+  2488.6644f,
+  2525.9282f,
+  2561.2415f,
+  2596.3557f,
+  2630.3607f
+};
+static const float X_TABLE[N_TABLA_XZ] = {
+  0.0000f,
+  7.0509f,
+  15.3822f,
+  24.7413f,
+  35.5926f,
+  47.7136f,
+  61.0998f,
+  75.7462f,
+  91.2447f,
+  108.3643f,
+  126.7264f,
+  146.3242f,
+  167.1503f,
+  188.6449f,
+  211.8745f,
+  236.3079f,
+  261.9361f,
+  288.7495f,
+  316.0415f,
+  345.1664f,
+  375.4454f,
+  406.8671f,
+  439.4198f,
+  472.2569f,
+  507.0079f,
+  542.8525f,
+  579.7773f,
+  616.8293f,
+  655.8472f,
+  695.9031f,
+  736.9820f,
+  779.0685f,
+  821.0846f,
+  865.1154f,
+  910.1058f,
+  956.0393f,
+  1002.8985f,
+  1049.4904f,
+  1098.1269f,
+  1147.6361f,
+  1197.9995f,
+  1249.1983f,
+  1299.9352f,
+  1352.7279f,
+  1406.2982f,
+  1460.6261f,
+  1515.6912f,
+  1570.1042f,
+  1626.5651f,
+  1683.7013f
+};
+float correccionX_desdeZ(float z_mm) {
+  if (z_mm <= Z_TABLE[0]) return X_TABLE[0];
+  if (z_mm >= Z_TABLE[N_TABLA_XZ - 1]) return X_TABLE[N_TABLA_XZ - 1];
+  for (int i = 0; i < N_TABLA_XZ - 1; i++) {
+    if (z_mm >= Z_TABLE[i] && z_mm <= Z_TABLE[i + 1]) {
+      float t = (z_mm - Z_TABLE[i]) / (Z_TABLE[i + 1] - Z_TABLE[i]);
+      return X_TABLE[i] + t * (X_TABLE[i + 1] - X_TABLE[i]);
+    }
+  }
+  return 0.0f;
+}
+
+static float z_anterior = 0.0f;
+
 /**
  * G0, G1: Coordinated movement of X Y Z E axes
  */
+
+  // BALTA (PASO 1)
+  // ACÁ ARRANCA CON EL MOVIMIENTO
+
+  /* G0_G1 (FALSE):
+  Es la capa de interfaz entre G-code y subsistema de movimiento: hace checks,
+  adapta feedrates y decide ruta (e.g., si hay autoretract convertirá ciertos E-only en retracts).
+  Si todo eso estuviera mezclado en el planner/stepper sería difícil mantener y testar.
+  Además maneja muchos features opcionales (G0_FEEDRATE, FWRETRACT, NANODLP_Z_SYNC...)
+  que no deberían enturbiar la lógica de planificación.
+
+  Mantener aquí sólo parsing / decisiones de alto nivel.
+  Evitar colocar lógicas de temporización o de motor (esas pertenecen al planner/stepper).
+  Asegúrate de restaurar el feedrate_mm_s correctamente. */
+
 void GcodeSuite::G0_G1(TERN_(HAS_FAST_MOVES, const bool fast_move/*=false*/)) {
   if (!MOTION_CONDITIONS) return;
 
@@ -59,7 +198,7 @@ void GcodeSuite::G0_G1(TERN_(HAS_FAST_MOVES, const bool fast_move/*=false*/)) {
     #endif
   #endif
 
-  get_destination_from_command();                 // Get X Y [Z[I[J[K]]]] [E] F (and set cutter power)
+  get_destination_from_command();                 // Get X Y [Z[I[J[K]]]] [E] F (and set cutter power);
 
   #ifdef G0_FEEDRATE
     if (fast_move) {
@@ -91,15 +230,100 @@ void GcodeSuite::G0_G1(TERN_(HAS_FAST_MOVES, const bool fast_move/*=false*/)) {
 
   #endif // FWRETRACT
 
+  // Drena la cola del planner y espera que el stepper ISR termine el bloque actual
+  // antes de activar Z. Así ningún eje se mueve mientras dure el while de Z.
+  if (parser.seenval('Z')) {
+    // ESTA ES LA LINEA QUE HAY QUE MODIFICAR SI SE QUIERE QUE LOS EJES SE MUEVAN MIENTRAS SE MUEVE Z 
+    planner.synchronize();
+
+    // Evitar que quiera irse más arriba de lo que puede
+    if (destination.z > largo_brazo) destination.z = largo_brazo;
+
+      // Dirección de desplazamiento
+      double dir_z = (destination.z > Planner::destino_local_Z) ? 1.0 : -1.0;
+      Planner::destino_local_Z = destination.z;
+
+      Planner::Z_BUSY_1 = true;
+      Planner::Z_BUSY_2 = true;
+
+      // Se activan las electroválvulas correspondientes y se guarda la dirección de movimiento
+      if (dir_z > 0) {
+        extDigitalWrite(Z1_UP_PIN, 255);
+        hal.set_pwm_duty(Z1_UP_PIN, 255);
+        extDigitalWrite(Z1_DOWN_PIN, 0);
+        hal.set_pwm_duty(Z1_DOWN_PIN, 0);
+        extDigitalWrite(Z2_UP_PIN, 255);
+        hal.set_pwm_duty(Z2_UP_PIN, 255);
+        extDigitalWrite(Z2_DOWN_PIN, 0);
+        hal.set_pwm_duty(Z2_DOWN_PIN, 0);
+        Planner::subiendo = true;
+      }
+      else {
+        extDigitalWrite(Z1_UP_PIN, 0);
+        hal.set_pwm_duty(Z1_UP_PIN, 0);
+        extDigitalWrite(Z1_DOWN_PIN, 255);
+        hal.set_pwm_duty(Z1_DOWN_PIN, 255);
+        extDigitalWrite(Z2_UP_PIN, 0);
+        hal.set_pwm_duty(Z2_UP_PIN, 0);
+        extDigitalWrite(Z2_DOWN_PIN, 255);
+        hal.set_pwm_duty(Z2_DOWN_PIN, 255);
+        Planner::subiendo = false;
+      }
+
+      // Se espera a que el pistón llegue a su destino
+      while (Planner::Z_BUSY_1 | Planner::Z_BUSY_2) {
+        // BALTA
+        // Leo los encoders constantemente
+        leer_encoder();
+
+        // BALTA
+        // Analizo constantemente si el pistón llegó a su destino
+        if ((Planner::subiendo) && (Planner::Z_BUSY_1)){
+          if (h1_mm >= (Planner::destino_local_Z - 1.5)) {Planner::z_isr_1();}
+        }
+        else if (!(Planner::subiendo) && (Planner::Z_BUSY_1)) {
+          if (h1_mm <= (Planner::destino_local_Z + 1.5)) {Planner::z_isr_1();}
+        }
+
+        if ((Planner::subiendo) && (Planner::Z_BUSY_2)){
+          if (h2_mm >= (Planner::destino_local_Z - 1.5)) {Planner::z_isr_2();}
+        }
+        else if (!(Planner::subiendo) && (Planner::Z_BUSY_2)) {
+          if (h2_mm <= (Planner::destino_local_Z + 1.5)) {Planner::z_isr_2();}
+        }
+      }
+
+      // Se desactivan las electroválvulas
+      extDigitalWrite(Z1_UP_PIN, 0);
+      hal.set_pwm_duty(Z1_UP_PIN, 0);
+      extDigitalWrite(Z1_DOWN_PIN, 0);
+      hal.set_pwm_duty(Z1_DOWN_PIN, 0);
+      extDigitalWrite(Z2_UP_PIN, 0);
+      hal.set_pwm_duty(Z2_UP_PIN, 0);
+      extDigitalWrite(Z2_DOWN_PIN, 0);
+      hal.set_pwm_duty(Z2_DOWN_PIN, 0);
+
+
+    #ifdef G0_FEEDRATE
+      // Restore the motion mode feedrate
+      if (fast_move) feedrate_mm_s = old_feedrate;
+    #endif
+
+    double correccion_x = correccionX_desdeZ(Planner::destino_local_Z) - correccionX_desdeZ(Planner::z_anterior);
+
+    Planner::correccion_acumulada_x += correccion_x;
+    destination.x = current_position.x + correccion_x;
+    Planner::z_anterior = Planner::destino_local_Z;
+  }
+
+  if (parser.seenval('X')) {
+    destination.x += Planner::correccion_acumulada_x;
+  }
+
   #if IS_SCARA
     fast_move ? prepare_fast_move_to_destination() : prepare_line_to_destination();
   #else
     prepare_line_to_destination();
-  #endif
-
-  #ifdef G0_FEEDRATE
-    // Restore the motion mode feedrate
-    if (fast_move) feedrate_mm_s = old_feedrate;
   #endif
 
   #if ENABLED(NANODLP_Z_SYNC)
