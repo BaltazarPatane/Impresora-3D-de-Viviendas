@@ -35,6 +35,7 @@ GcodeSuite gcode;
 #include "parser.h"
 #include "queue.h"
 #include "../module/motion.h"
+#include "../module/planner.h"
 
 #if ENABLED(PRINTCOUNTER)
   #include "../module/printcounter.h"
@@ -182,17 +183,27 @@ void GcodeSuite::get_destination_from_command() {
   #endif
 
   // Get new XYZ position, whether absolute or relative
+
   LOOP_NUM_AXES(i) {
     if ( (seen[i] = parser.seenval(AXIS_CHAR(i))) ) {
       const float v = parser.value_axis_units((AxisEnum)i);
       if (skip_move)
         destination[i] = current_position[i];
       else
+        // Si está en modo relativo (G91): dest = posición_actual + valor
+        // Si está en modo absoluto (G90): dest = LOGICAL_TO_NATIVE(v,i)
         destination[i] = axis_is_relative(AxisEnum(i)) ? current_position[i] + v : LOGICAL_TO_NATIVE(v, i);
     }
     else
       destination[i] = current_position[i];
   }
+  // BALTA
+  // Le agrego una iteración al loop para que contemple Z aunque no sea un eje (ya no lo uso)
+  //if (parser.seenval('Z')) Planner::destino_final_Z = parser.value_float();
+
+      
+  // BALTA
+  // En destination guarda los valores de X (destination[0]),Y (destination[1]) y Z (destination[2])
 
   #if HAS_EXTRUDERS
     // Get new E position, whether absolute or relative
@@ -320,6 +331,68 @@ void GcodeSuite::dwell(millis_t time) {
 
 #endif // G29_RETRY_AND_RECOVER
 
+#if !HAS_LEVELING
+
+  // BALTA
+  // G29 para imponer manualmente X, Y y la altura inicial del encoder en Z
+  // Uso esperado: G29 X<valor> Y<valor> Z<valor>
+  void GcodeSuite::G29() {
+
+    if (!parser.seenval('X') || !parser.seenval('Y') || !parser.seenval('Z')) {
+      SERIAL_ECHOLNPGM("Error: G29 requiere X<valor> Y<valor> Z<valor>.");
+      return;
+    }
+
+    const float x_inicial_mm = parser.floatval('X');
+    const float y_inicial_mm = parser.floatval('Y');
+    const float encoder_inicial_mm = parser.floatval('Z');
+
+    // Se imponen manualmente las posiciones actuales de X e Y
+    current_position.x = x_inicial_mm;
+    current_position.y = y_inicial_mm;
+
+    // Se sincroniza el planner con la nueva posicion impuesta
+    sync_plan_position();
+
+    // Parte de Z: se mantiene igual que antes, pero usando Z en vez de E
+    if (!set_encoders_height_mm(encoder_inicial_mm)) {
+      SERIAL_ECHOPGM("Error: no se pudo imponer encoder a ");
+      SERIAL_ECHO(encoder_inicial_mm);
+      SERIAL_ECHOLNPGM(" mm.");
+      return;
+    }
+
+
+    SERIAL_ECHOPGM("X inicial impuesto: ");
+    SERIAL_ECHO(x_inicial_mm);
+    SERIAL_ECHOLNPGM(" mm");
+
+    SERIAL_ECHOPGM("Y inicial impuesto: ");
+    SERIAL_ECHO(y_inicial_mm);
+    SERIAL_ECHOLNPGM(" mm");
+
+    SERIAL_ECHOPGM("Altura inicial encoder Z: ");
+    SERIAL_ECHO(encoder_inicial_mm);
+    SERIAL_ECHOLNPGM(" mm");
+  }
+
+#endif
+
+#if !HAS_BED_PROBE
+  void GcodeSuite::G30() {
+    SERIAL_ECHOPGM("X: ");
+    SERIAL_ECHO(current_position.x);
+    SERIAL_ECHOLNPGM(" mm.");
+    SERIAL_ECHOPGM("Y: ");
+    SERIAL_ECHO(current_position.y);
+    SERIAL_ECHOLNPGM(" mm.");
+    SERIAL_ECHOPGM("Z: ");
+    SERIAL_ECHO(current_position.z);
+    SERIAL_ECHOLNPGM(" mm.");
+  }
+
+#endif
+
 /**
  * Process the parsed command and dispatch it to its handler
  */
@@ -406,6 +479,11 @@ void GcodeSuite::process_parsed_command(const bool no_ok/*=false*/) {
         case 29:                                                  // G29: Bed leveling calibration
           TERN(G29_RETRY_AND_RECOVER, G29_with_retry, G29)();
           break;
+      #else
+
+        //BALTA
+        //Agregué este comando para poder reanudar la impresora
+        case 29: G29(); break;                                    // G29: Imponer valor inicial de los ejes X, Y y altura del encoder en Z
       #endif
 
       #if HAS_BED_PROBE
@@ -414,6 +492,11 @@ void GcodeSuite::process_parsed_command(const bool no_ok/*=false*/) {
           case 31: G31(); break;                                  // G31: dock the sled
           case 32: G32(); break;                                  // G32: undock the sled
         #endif
+      #else
+
+        // BALTA
+        // Agregué este comando para poder reanudar la impresora
+        case 30: G30(); break;                                    // G30: Imprime la posición actual de X, Y y Z (en mm)
       #endif
 
       #if ENABLED(DELTA_AUTO_CALIBRATION)

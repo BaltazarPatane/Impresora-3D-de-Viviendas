@@ -547,6 +547,8 @@ private:
       #define G29_TYPE void
     #endif
     static G29_TYPE G29();
+  #else
+    static void G29();
   #endif
 
   #if HAS_BED_PROBE
