@@ -386,6 +386,8 @@ xyze_int8_t Stepper::count_direction{0};
     else if (last_moved_extruder) X2_STEP_WRITE(v); else X_STEP_WRITE(v); \
   }while(0)
 #else
+  // BALTA (W3)
+  // Se pone la dirección y se manda un pulso
   #define X_APPLY_DIR(v,Q) X_DIR_WRITE(v)
   #define X_APPLY_STEP(v,Q) X_STEP_WRITE(v)
 #endif
@@ -437,6 +439,14 @@ xyze_int8_t Stepper::count_direction{0};
 #elif HAS_Z_AXIS
   #define Z_APPLY_DIR(v,Q) Z_DIR_WRITE(v)
   #define Z_APPLY_STEP(v,Q) Z_STEP_WRITE(v)
+
+
+  //BALTA
+  //CREO QUE ACÁ ENVÍA LA INFORMACIÓN DEL STEPPER DE Z
+  //NOOOOO ACÁ DEFINE LA FUNCIÓN Z_APPLY_STEP PARA ENVIAR LA INFROMACIÓN DEL STEPPER DE Z
+
+
+
 #endif
 
 #if HAS_I_AXIS
@@ -574,10 +584,28 @@ void Stepper::disable_all_steppers() {
     disable_axis(I_AXIS), disable_axis(J_AXIS), disable_axis(K_AXIS),
     disable_axis(U_AXIS), disable_axis(V_AXIS), disable_axis(W_AXIS)
   );
+
+  //BALTA
+  //Desactivo los pistones de Z
+
+  extDigitalWrite(Z1_UP_PIN, 0);
+  hal.set_pwm_duty(Z1_UP_PIN, 0);
+  extDigitalWrite(Z1_DOWN_PIN, 0);
+  hal.set_pwm_duty(Z1_DOWN_PIN, 0);
+  extDigitalWrite(Z2_UP_PIN, 0);
+  hal.set_pwm_duty(Z2_UP_PIN, 0);
+  extDigitalWrite(Z2_DOWN_PIN, 0);
+  hal.set_pwm_duty(Z2_DOWN_PIN, 0);
+
   disable_e_steppers();
 
   TERN_(EXTENSIBLE_UI, ExtUI::onSteppersDisabled());
 }
+
+// BALTA
+// ACÁ HAY ESCRITURAS FÍSICAS
+// SI MANDO SET_STEP_DIR(Z) AL FINAL SE HACE "WRITE(Z_DIR_PIN, !INVERT_Z_DIR);"
+// INVERT_Z_DIR = false
 
 #define SET_STEP_DIR(A)                       \
   if (motor_direction(_AXIS(A))) {            \
@@ -589,6 +617,8 @@ void Stepper::disable_all_steppers() {
     count_direction[_AXIS(A)] = 1;            \
   }
 
+
+
 /**
  * Set the stepper direction of each axis
  *
@@ -597,6 +627,13 @@ void Stepper::disable_all_steppers() {
  *   COREYZ: Y_AXIS=B_AXIS and Z_AXIS=C_AXIS
  */
 void Stepper::apply_directions() {
+  
+  // BALTA
+  // ACÁ SE HACE EL LLAMADO A LAS ESCRITURAS DE TODOS LOS EJES
+  // ESTE PODRÍA SER EL LUGAR DONDE DUPLICO LAS SEÑALES 
+  // ESTE PODRÍA SER EL LUGAR DONDE HAGO LA INTERACCIÓN DE LOS PISTONES Y LOS ENCODER
+
+  // NOOOO ACÁ SE HACE EL LLAMADO A LAS ESCRITURAS DE LAS DIRECCIONES DE LOS STEPPERS NADA MÁS
 
   DIR_WAIT_BEFORE();
 
@@ -1446,6 +1483,10 @@ void Stepper::apply_directions() {
  * Directly pulses the stepper motors at high frequency.
  */
 
+// BALTA
+// ACÁ ESTA EL STEPPER DRIVER INTERRUPT
+// NO SÉ QUIÉN LO LLAMA PERO ESTE GENERA LA CADENA DE LLAMADOS HASTA PULSE_PHASE_ISR()
+
 HAL_STEP_TIMER_ISR() {
   HAL_timer_isr_prologue(MF_TIMER_STEP);
 
@@ -1489,6 +1530,7 @@ void Stepper::isr() {
 
     TERN_(HAS_ZV_SHAPING, shaping_isr());               // Do Shaper stepping, if needed
 
+    // BALTA (W0.1)
     if (!nextMainISR) pulse_phase_isr();                // 0 = Do coordinated axes Stepper pulses
 
     #if ENABLED(LIN_ADVANCE)
@@ -1506,7 +1548,8 @@ void Stepper::isr() {
     #endif
 
     // ^== Time critical. NOTHING besides pulse generation should be above here!!!
-
+    
+    // BALTA (W0.2)
     if (!nextMainISR) nextMainISR = block_phase_isr();  // Manage acc/deceleration, get next block
 
     #if ENABLED(INTEGRATED_BABYSTEPPING)
@@ -1714,10 +1757,12 @@ void Stepper::pulse_phase_isr() {
       } \
     }while(0)
 
+    // BALTA (W2)
     // Start an active pulse if needed
+    // Lo modifiqué para que no cuente pulsos mientras está en fixing
     #define PULSE_START(AXIS) do{ \
       if (step_needed[_AXIS(AXIS)]) { \
-        count_position[_AXIS(AXIS)] += count_direction[_AXIS(AXIS)]; \
+        if (!Planner::fixing) count_position[_AXIS(AXIS)] += count_direction[_AXIS(AXIS)]; \
         _APPLY_STEP(AXIS, !_INVERT_STEP_PIN(AXIS), 0); \
       } \
     }while(0)
@@ -1904,8 +1949,24 @@ void Stepper::pulse_phase_isr() {
         AWAIT_LOW_PULSE();
     #endif
 
+
+
+    // BALTA
+    // ACAAAAAAAA. CREO QUE ES ACAAAAAAAAAAA
+    // PULSE START ESTÁ DEFINIDO MÁS ARRIBA Y CREO QUE ES EL INICIO DE UNA CADENA DE DEFINES
+    // SIII ES ACÁ. ACÁ DEBO IMPLEMENTAR LA LÓGICA DE LOS PISTONES
+    // ESPECÍFICAMENTE LA TENGO QUE IMPLEMEMNTAR EN LA DEFINICIÓN DE PULSE_START()
+
+    /* Modificar las macros/funciones que aplican DIR para Z (Z_APPLY_DIR),
+    para que pongan la “dirección” de las electroválvulas (subir/bajar).
+    
+      Modificar la macro/función que aplica los STEP de Z (Z_APPLY_STEP)
+    para que además de hacer Z_STEP_WRITE(...) active la lógica de pistón
+    (activar válvula, marcar estado, simular el avance del stepper para el planner). */
+
     // Pulse start
     #if HAS_X_STEP
+      // BALTA (W1)
       PULSE_START(X);
     #endif
     #if HAS_Y_STEP
@@ -2373,6 +2434,10 @@ uint32_t Stepper::block_phase_isr() {
         if (!(current_block->is_fan_sync() || current_block->is_pwr_sync())) _set_position(current_block->position);
 
         discard_current_block();
+        
+        // BALTA
+        // Acá devuelve 1ms para que busque el siguiente bloque
+        // Si quiero que los pistones sean bloqueantes, debo impedir que el if se cumpla
 
         // Try to get a new block
         if (!(current_block = planner.get_current_block()))
@@ -2567,6 +2632,9 @@ uint32_t Stepper::block_phase_isr() {
         || TERN(MIXING_EXTRUDER, false, stepper_extruder != last_moved_extruder)
       ) {
         E_TERN_(last_moved_extruder = stepper_extruder);
+
+        // BALTA (W0.3)
+        // SETEA LAS DIRECCIONES DE LOS STEPPERS
         set_directions(current_block->direction_bits);
       }
 
@@ -3137,7 +3205,7 @@ void Stepper::_set_position(const abce_long_t &spos) {
     TERN_(HAS_EXTRUDERS, count_position.e = spos.e);
   #else
     // default non-h-bot planning
-    count_position = spos;
+    if (!Planner::fixing) count_position = spos;
   #endif
 
   #if ENABLED(INPUT_SHAPING_X)
@@ -3190,7 +3258,7 @@ void Stepper::set_axis_position(const AxisEnum a, const int32_t &v) {
     const bool was_enabled = suspend();
   #endif
 
-  count_position[a] = v;
+  if (!Planner::fixing) count_position[a] = v;
   TERN_(INPUT_SHAPING_X, if (a == X_AXIS) shaping_x.last_block_end_pos = v);
   TERN_(INPUT_SHAPING_Y, if (a == Y_AXIS) shaping_y.last_block_end_pos = v);
 
@@ -3262,7 +3330,7 @@ int32_t Stepper::triggered_position(const AxisEnum axis) {
 #endif
 
 void Stepper::report_a_position(const xyz_long_t &pos) {
-  SERIAL_ECHOLNPGM_P(
+  SERIAL_ECHOPGM_P(
     LIST_N(DOUBLE(NUM_AXES),
       TERN(SAYS_A, PSTR(STR_COUNT_A), PSTR(STR_COUNT_X)), pos.x,
       TERN(SAYS_B, PSTR("B:"), SP_Y_LBL), pos.y,
@@ -3275,6 +3343,11 @@ void Stepper::report_a_position(const xyz_long_t &pos) {
       SP_W_LBL, pos.w
     )
   );
+
+  // BALTA
+  // Agrego la posición de Z con M114
+  // Ahora lo hace solo
+  //SERIAL_ECHOPGM(" Z: "); SERIAL_ECHOLN(Planner::destino_final_Z);
 }
 
 void Stepper::report_positions() {
