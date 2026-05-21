@@ -146,7 +146,10 @@
   #define E_STEPPERS EXTRUDERS
 #endif
 #ifndef E_MANUAL
-  #define E_MANUAL EXTRUDERS
+  //BALTA
+  // Lo comento porque no debería poder mover el extrusor
+
+  //#define E_MANUAL EXTRUDERS
 #endif
 
 // Number of hotends...

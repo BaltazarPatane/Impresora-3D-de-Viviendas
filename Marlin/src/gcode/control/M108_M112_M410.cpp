@@ -40,6 +40,14 @@ void GcodeSuite::M108() {
  * M112: Full Shutdown
  */
 void GcodeSuite::M112() {
+  extDigitalWrite(Z1_UP_PIN, 0);
+  hal.set_pwm_duty(Z1_UP_PIN, 0);
+  extDigitalWrite(Z1_DOWN_PIN, 0);
+  hal.set_pwm_duty(Z1_DOWN_PIN, 0);
+  extDigitalWrite(Z2_UP_PIN, 0);
+  hal.set_pwm_duty(Z2_UP_PIN, 0);
+  extDigitalWrite(Z2_DOWN_PIN, 0);
+  hal.set_pwm_duty(Z2_DOWN_PIN, 0);
   kill(FPSTR(M112_KILL_STR), nullptr, true);
 }
 

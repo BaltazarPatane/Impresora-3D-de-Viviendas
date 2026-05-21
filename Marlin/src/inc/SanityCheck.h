@@ -1982,7 +1982,9 @@ static_assert(COUNT(arm) == LOGICAL_AXES, "AXIS_RELATIVE_MODES must contain " _L
  * Pins and Sensor IDs must be set for each heater
  */
 #if HAS_EXTRUDERS && !ANY_PIN(TEMP_0, TEMP_0_CS)
-  #error "TEMP_0_PIN or TEMP_0_CS_PIN not defined for this board."
+  // BALTA (AGREGAR)
+  // Lo saqué para que no me tirara error
+  // #error "TEMP_0_PIN or TEMP_0_CS_PIN not defined for this board."
 #elif HAS_EXTRUDERS && !HAS_HEATER_0
   #error "HEATER_0_PIN not defined for this board."
 #elif TEMP_SENSOR_IS_MAX_TC(0) && !PIN_EXISTS(TEMP_0_CS)

@@ -22,6 +22,8 @@
 
 #include "../gcode.h"
 #include "../../module/motion.h"
+#include "../../module/planner.h"
+#include "../../MarlinCore.h"
 
 #if ENABLED(I2C_POSITION_ENCODERS)
   #include "../../feature/encoder_i2c.h"
