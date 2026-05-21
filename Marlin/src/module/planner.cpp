@@ -71,6 +71,7 @@
 #include "temperature.h"
 #include "../lcd/marlinui.h"
 #include "../gcode/parser.h"
+#include <avr/wdt.h>
 
 #include "../MarlinCore.h"
 
@@ -117,6 +118,119 @@
 Planner planner;
 
 // public:
+
+// BALTA
+// Variable "global" de la dirección del movimiento
+volatile bool Planner::subiendo = false;
+
+// BALTA
+// Variable "global" del destino local del pistón (también sirve como última posición antes de moverse)
+volatile float Planner::destino_local_Z = 0;
+
+// BALTA
+// Variable "global" del destino del pistón (leído con el parser)
+volatile float Planner::destino_final_Z = 0;
+
+// BALTA
+// Esto me permite mover el eje X sin que se actualice su posición
+// Esto se puede hacer si no es peligroso pasarnos del bed del eje X
+// Variable "global" de movimiento para correccion
+volatile bool Planner::fixing = false;
+
+// BALTA
+// Esta flag sirve para saber si estoy moviendo con los botones del display
+volatile bool Planner::manual = false;
+
+// BALTA (Z0)
+// Lo pongo en falso para que no bloquee
+// Se puede acceder a el desde cualquier archivo como Planner::Z_BUSY = X;
+// Variables bloqueantes de los pistones
+volatile bool Planner::Z_BUSY_1 = false;
+volatile bool Planner::Z_BUSY_2 = false;
+
+// BALTA
+// Guarda la altura inicial al arrancar el programa
+volatile float Planner::h_inicial_1 = 0;
+volatile float Planner::h_inicial_2 = 0;
+
+volatile float Planner::correccion_acumulada_x = 0;
+
+volatile float Planner::z_anterior = 0;
+
+
+// BALTA (Z4)
+// Interrupción para cambiar el flag y frenar el piston 1
+void Planner::z_isr_1() {
+  if (Z_BUSY_1) {
+    Z_BUSY_1 = false;
+
+    extDigitalWrite(Z1_UP_PIN, 0);
+    hal.set_pwm_duty(Z1_UP_PIN, 0);
+    extDigitalWrite(Z1_DOWN_PIN, 0);
+    hal.set_pwm_duty(Z1_DOWN_PIN, 0);
+  }
+}
+
+void Planner::z_isr_2() {
+  if (Z_BUSY_2) {
+    Z_BUSY_2 = false;
+
+    extDigitalWrite(Z2_UP_PIN, 0);
+    hal.set_pwm_duty(Z2_UP_PIN, 0);
+    extDigitalWrite(Z2_DOWN_PIN, 0);
+    hal.set_pwm_duty(Z2_DOWN_PIN, 0);
+  }
+}
+
+// BALTA
+// Procesos que apagan las electroválvulas de los pistones
+void Planner::apagar_Z1() {
+  extDigitalWrite(Z1_UP_PIN, 0);
+  hal.set_pwm_duty(Z1_UP_PIN, 0);
+  extDigitalWrite(Z1_DOWN_PIN, 0);
+  hal.set_pwm_duty(Z1_DOWN_PIN, 0);
+}
+
+void Planner::apagar_Z2() {
+  extDigitalWrite(Z2_UP_PIN, 0);
+  hal.set_pwm_duty(Z2_UP_PIN, 0);
+  extDigitalWrite(Z2_DOWN_PIN, 0);
+  hal.set_pwm_duty(Z2_DOWN_PIN, 0);
+}
+
+// BALTA
+// Procesos que activan las electroválvulas de subida de los pistones
+void Planner::subir_Z1() {
+  extDigitalWrite(Z1_UP_PIN, 255);
+  hal.set_pwm_duty(Z1_UP_PIN, 255);
+  extDigitalWrite(Z1_DOWN_PIN, 0);
+  hal.set_pwm_duty(Z1_DOWN_PIN, 0);
+}
+
+void Planner::subir_Z2() {
+  extDigitalWrite(Z2_UP_PIN, 255);
+  hal.set_pwm_duty(Z2_UP_PIN, 255);
+  extDigitalWrite(Z2_DOWN_PIN, 0);
+  hal.set_pwm_duty(Z2_DOWN_PIN, 0);
+}
+
+// BALTA
+// Procesos que activan las electroválvulas de bajada de los pistones
+void Planner::bajar_Z1() {
+  extDigitalWrite(Z1_UP_PIN, 0);
+  hal.set_pwm_duty(Z1_UP_PIN, 0);
+  extDigitalWrite(Z1_DOWN_PIN, 255);
+  hal.set_pwm_duty(Z1_DOWN_PIN, 255);
+}
+
+void Planner::bajar_Z2() {
+  extDigitalWrite(Z2_UP_PIN, 0);
+  hal.set_pwm_duty(Z2_UP_PIN, 0);
+  extDigitalWrite(Z2_DOWN_PIN, 255);
+  hal.set_pwm_duty(Z2_DOWN_PIN, 255);
+}
+
+#include <math.h>
 
 /**
  * A ring buffer of moves described in steps
@@ -1814,6 +1928,20 @@ void Planner::synchronize() { while (busy()) idle(); }
  *
  * @return  true if movement was properly queued, false otherwise (if cleaning)
  */
+
+// BALTA (PASO 6)
+// NO SÉ COMO PERO ACÁ LO HACE. EL MISMO MARLIN DICE QUE LO HACE!1!1!
+// NOOOOOOO TODAVÍA FALTA
+
+/* _buffer_steps(xyze_long_t, feedRate_t, uint8_t, PlannerHints)
+Reserva un bloque libre, chequea limpieza, invoca _populate_block() para rellenar el bloque
+con datos (pasos, velocidades...), ajusta el head/tail del buffer (block_buffer_head),
+llama a recalculate() (que recalcula perfiles trapezoidales / optimizaciones entre bloques)
+y despierta al stepper (stepper.wake_up()).
+
+Observá delay_before_delivering y BLOCK_DELAY_FOR_1ST_MOVE: controlan latencias de entrega;
+jugar con esto puede cambiar suavidad al inicio de movimientos. */
+
 bool Planner::_buffer_steps(const xyze_long_t &target
   OPTARG(HAS_POSITION_FLOAT, const xyze_pos_t &target_float)
   OPTARG(HAS_DIST_MM_ARG, const xyze_float_t &cart_dist_mm)
@@ -1877,6 +2005,26 @@ bool Planner::_buffer_steps(const xyze_long_t &target
  *
  * @return  true if movement is acceptable, false otherwise
  */
+
+// BALTA (PASO 7)
+// ACÁ SE POPULATE A BLOCK!! NO SÉ LO QUE SIGNIFICA
+// LLEGA HASTA LA LÍNEA 3000 CASI
+// SIGO SIN SABER DONDE MANDA EL MOVIMIENTO IGUAL
+// MAÑANA SIGO MUAJAJAJAJAJA
+
+/* _populate_block(block_t, abce_long_t, feedRate_t, uint8_t, PlannerHints)
+Es la traducción final: pasa de cantidades físicas y políticas a una estructura compacta
+que la ISR sabe interpretar fácilmente. Esta separación es imprescindible para que la ISR
+sea simple y rápida (la ISR no puede hacer cálculos complejos en tiempo real).
+
+Rellenado completo del block_t con:
+block->direction_bits = dm;
+block->steps.set(...) (nº de pasos por eje)
+block->steps.e = esteps;
+block->step_event_count = _MAX(...); ← número de “eventos” totales (pasos más altos)
+block->millimeters = ...;
+block->nominal_speed, block->nominal_rate, block->acceleration* etc. */
+
 bool Planner::_populate_block(
   block_t * const block,
   const abce_long_t &target
@@ -3006,6 +3154,18 @@ void Planner::buffer_sync_block(const BlockFlagBit sync_flag/*=BLOCK_BIT_SYNC_PO
  *
  * @return  false if no segment was queued due to cleaning, cold extrusion, full queue, etc.
  */
+
+// BALTA (PASO 5)
+// ES IMPORTANTÍSIMO. ÚLTIMOS AJUSTES DE LOS MOVIMIENTOS PARA ENVIARLOS A LA COLA
+
+/* buffer_segment(abce_pos_t, const_feedRate_t fr_mm_s, uint8_t , PlannerHints)
+Conversión de unidades, pasos y lógica de extrusor (counters, DRYRUN) son funciones
+conceptuales distintas de la que realmente llena el ring buffer de movimientos.
+Esta función mantiene limpia la conversión numérica.
+
+Atentos a DISTINCT_E_FACTORS y cambios de extrusor: se recalculan pasos de E.
+Errores aquí se traducen en saltos de extrusión. */
+
 bool Planner::buffer_segment(const abce_pos_t &abce
   OPTARG(HAS_DIST_MM_ARG, const xyze_float_t &cart_dist_mm)
   , const_feedRate_t fr_mm_s
@@ -3015,6 +3175,15 @@ bool Planner::buffer_segment(const abce_pos_t &abce
 
   // If we are cleaning, do not accept queuing of movements
   if (cleaning_buffer_counter) return false;
+
+  // BALTA (Z2)
+  // Cambio esto para hacer bloqueantes a los pistones
+  // No se encolan movimientos hasta que terminen
+
+  if (Z_BUSY_1) return false;
+  if (Z_BUSY_2) return false;
+
+
 
   // When changing extruders recalculate steps corresponding to the E position
   #if ENABLED(DISTINCT_E_FACTORS)
@@ -3112,6 +3281,10 @@ bool Planner::buffer_segment(const abce_pos_t &abce
     #endif
   //*/
 
+// BALTA
+// ACÁ VERDADERAMENTE SE MANDA EL MOVIMIENTO A LA COLA
+// ES IMPORTANTÑISIMO
+
   // Queue the movement. Return 'false' if the move was not queued.
   if (!_buffer_steps(target
       OPTARG(HAS_POSITION_FLOAT, target_float)
@@ -3133,11 +3306,27 @@ bool Planner::buffer_segment(const abce_pos_t &abce
  *  extruder        - optional target extruder (otherwise active_extruder)
  *  hints           - optional parameters to aid planner calculations
  */
+
+// BALTA (PASO 4)
+// ES IMPORTANTÍSIMO. AGREGA UN MOVIMIENTO LINEAL A LA COLA
+// QUIZÁS EL MÁS IMPORTANTE? NO, FALTAN UN MONTÓN MÁS
+// LUGAR MÁS INTERESANTE PARA AGREGAR EL MOVIMIENTO DEL PISTÓN
+
+/* buffer_line(xyze_pos_t, const_feedRate_t, uint8_t, PlannerHints)
+Separa la traducción geométrica (cartesiano → ángulos/ABC para robots, o transformación CoreXY)
+de la lógica de buffer en pasos. Mantener la cinemática separada permite reutilizar el
+mismo planner en diferentes arquitecturas (Cartesian, CoreXY, Delta, SCARA).
+
+Aquí se hacen cálculos que afectan la precisión de la trayectoria (feedrate en grados/s para SCARA).
+Si cambias la kinemática, es aquí donde vas a tocar menos código. */
+
 bool Planner::buffer_line(const xyze_pos_t &cart, const_feedRate_t fr_mm_s
   , const uint8_t extruder/*=active_extruder*/
   , const PlannerHints &hints/*=PlannerHints()*/
 ) {
   xyze_pos_t machine = cart;
+
+  // HAS_POSITION_MODIFIERS ESTÁ SIEMPRE EN FALSE ENTONCES ESTO NO SE HACE
   TERN_(HAS_POSITION_MODIFIERS, apply_modifiers(machine));
 
   #if IS_KINEMATIC
@@ -3182,7 +3371,7 @@ bool Planner::buffer_line(const xyze_pos_t &cart, const_feedRate_t fr_mm_s
     }
     return false;
   #else
-    return buffer_segment(machine, fr_mm_s, extruder, hints);
+    return buffer_segment(machine, fr_mm_s, extruder, hints); //Add a new linear movement to the buffer in axis units.
   #endif
 } // buffer_line()
 
@@ -3280,7 +3469,7 @@ void Planner::set_machine_position_mm(const abce_pos_t &abce) {
       LOOP_NUM_AXES(axis) stepper_pos[axis] += backlash.get_applied_steps((AxisEnum)axis);
       stepper.set_position(stepper_pos);
     #else
-      stepper.set_position(position);
+      if (!Planner::fixing) stepper.set_position(position);
     #endif
   }
 }
