@@ -236,6 +236,12 @@ namespace Language_es {
   LSTR MSG_MOVE_10MM                      = _UxGT("Mover 10mm");
   LSTR MSG_MOVE_50MM                      = _UxGT("Mover 50mm");
   LSTR MSG_MOVE_100MM                     = _UxGT("Mover 100mm");
+
+  //BALTA
+  //Agrego algunos para movimientos más grandes
+  LSTR MSG_MOVE_1000MM                     = _UxGT("Mover 1000mm");
+  LSTR MSG_MOVE_5000MM                     = _UxGT("Mover 5000mm");
+
   LSTR MSG_SPEED                          = _UxGT("Velocidad");
   LSTR MSG_BED_Z                          = _UxGT("Cama Z");
   LSTR MSG_NOZZLE                         = _UxGT("Boquilla");

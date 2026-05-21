@@ -43,12 +43,14 @@
 #include "../../gcode/parser.h" // for inch support
 #include "../../module/temperature.h"
 
+#include "../../module/planner.h"
+#include "../../gcode/gcode.h"
+
 #if ENABLED(DELTA)
   #include "../../module/delta.h"
 #endif
 
 #if HAS_LEVELING
-  #include "../../module/planner.h"
   #include "../../feature/bedlevel/bedlevel.h"
 #endif
 
@@ -166,12 +168,16 @@ void _menu_move_distance(const AxisEnum axis, const screenFunc_t func, const int
   }
   else {
     if (LARGE_AREA_TEST) {
+      SUBMENU(MSG_MOVE_5000MM, []{ _goto_manual_move(5000); });
+      SUBMENU(MSG_MOVE_1000MM, []{ _goto_manual_move(1000); });
       SUBMENU(MSG_MOVE_100MM, []{ _goto_manual_move(100); });
       SUBMENU(MSG_MOVE_50MM, []{ _goto_manual_move(50); });
     }
     SUBMENU(MSG_MOVE_10MM, []{ _goto_manual_move(10);    });
     SUBMENU(MSG_MOVE_1MM,  []{ _goto_manual_move( 1);    });
     SUBMENU(MSG_MOVE_01MM, []{ _goto_manual_move( 0.1f); });
+
+    
     #if HAS_Z_AXIS
       if (axis == Z_AXIS && (FINE_MANUAL_MOVE) > 0.0f && (FINE_MANUAL_MOVE) < 0.1f)
         SUBMENU_f(F(STRINGIFY(FINE_MANUAL_MOVE)), MSG_MOVE_N_MM, []{ _goto_manual_move(float(FINE_MANUAL_MOVE)); });
@@ -179,6 +185,74 @@ void _menu_move_distance(const AxisEnum axis, const screenFunc_t func, const int
   }
   END_MENU();
 }
+
+//////////////////////////////////////////////////////////////
+//BALTA (DISPLAY PASO 2)
+// Acá se preguntan
+
+static bool z_moving_up = false;
+static bool z_moving_down = false;
+
+void _menu_move_distance_Z() {
+  START_MENU();
+  BACK_ITEM(MSG_MOVE_AXIS);
+
+  if (!z_moving_down) {
+    ACTION_ITEM_F(z_moving_up ? F("Detener Z (Subiendo..)") : F("Subir Z"), []{
+      z_moving_up = !z_moving_up;
+      if (z_moving_up) {
+        extDigitalWrite(Z1_UP_PIN, 255);
+        hal.set_pwm_duty(Z1_UP_PIN, 255);
+        extDigitalWrite(Z1_DOWN_PIN, 0);
+        hal.set_pwm_duty(Z1_DOWN_PIN, 0);
+        extDigitalWrite(Z2_UP_PIN, 255);
+        hal.set_pwm_duty(Z2_UP_PIN, 255);
+        extDigitalWrite(Z2_DOWN_PIN, 0);
+        hal.set_pwm_duty(Z2_DOWN_PIN, 0);
+      } else {
+        extDigitalWrite(Z1_UP_PIN, 0);
+        hal.set_pwm_duty(Z1_UP_PIN, 0);
+        extDigitalWrite(Z1_DOWN_PIN, 0);
+        hal.set_pwm_duty(Z1_DOWN_PIN, 0);
+        extDigitalWrite(Z2_UP_PIN, 0);
+        hal.set_pwm_duty(Z2_UP_PIN, 0);
+        extDigitalWrite(Z2_DOWN_PIN, 0);
+        hal.set_pwm_duty(Z2_DOWN_PIN, 0);
+      }
+      ui.refresh();
+    });
+  }
+
+  if (!z_moving_up) {
+    ACTION_ITEM_F(z_moving_down ? F("Detener Z (Bajando..)") : F("Bajar Z"), []{
+      z_moving_down = !z_moving_down;
+      if (z_moving_down) {
+        extDigitalWrite(Z1_UP_PIN, 0);
+        hal.set_pwm_duty(Z1_UP_PIN, 0);
+        extDigitalWrite(Z1_DOWN_PIN, 255);
+        hal.set_pwm_duty(Z1_DOWN_PIN, 255);
+        extDigitalWrite(Z2_UP_PIN, 0);
+        hal.set_pwm_duty(Z2_UP_PIN, 0);
+        extDigitalWrite(Z2_DOWN_PIN, 255);
+        hal.set_pwm_duty(Z2_DOWN_PIN, 255);
+      } else {
+        extDigitalWrite(Z1_UP_PIN, 0);
+        hal.set_pwm_duty(Z1_UP_PIN, 0);
+        extDigitalWrite(Z1_DOWN_PIN, 0);
+        hal.set_pwm_duty(Z1_DOWN_PIN, 0);
+        extDigitalWrite(Z2_UP_PIN, 0);
+        hal.set_pwm_duty(Z2_UP_PIN, 0);
+        extDigitalWrite(Z2_DOWN_PIN, 0);
+        hal.set_pwm_duty(Z2_DOWN_PIN, 0);
+      }
+      ui.refresh();
+    });
+  }
+
+  END_MENU();
+}
+
+//////////////////////////////////////////////////////////////
 
 #if E_MANUAL
 
@@ -217,6 +291,11 @@ void menu_move() {
       #if HAS_Y_AXIS
         SUBMENU_N(Y_AXIS, MSG_MOVE_N, []{ _menu_move_distance(Y_AXIS, []{ lcd_move_axis(Y_AXIS); }); });
       #endif
+
+      //BALTA (DISPLAY PASO 1)
+      //Agrego los movimientos de Z
+      // Lo saqúe de momento
+      //SUBMENU(MSG_MOVE_Z, []{ _menu_move_distance_Z(); });
     }
     else {
       #if ENABLED(DELTA)
@@ -309,6 +388,9 @@ void menu_move() {
 #if ENABLED(ASSISTED_TRAMMING_WIZARD)
   void goto_tramming_wizard();
 #endif
+
+//BALTA
+//Este el menú donde se mueven los ejes manualmente
 
 void menu_motion() {
   START_MENU();

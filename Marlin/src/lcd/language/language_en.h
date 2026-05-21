@@ -322,6 +322,12 @@ namespace Language_en {
   LSTR MSG_MOVE_10MM                      = _UxGT("Move 10mm");
   LSTR MSG_MOVE_50MM                      = _UxGT("Move 50mm");
   LSTR MSG_MOVE_100MM                     = _UxGT("Move 100mm");
+
+  //BALTA
+  //Agrego algunos para movimientos más grandes
+  LSTR MSG_MOVE_1000MM                     = _UxGT("Move 1000mm");
+  LSTR MSG_MOVE_5000MM                     = _UxGT("Move 5000mm");
+
   LSTR MSG_MOVE_0001IN                    = _UxGT("Move 0.001in");
   LSTR MSG_MOVE_001IN                     = _UxGT("Move 0.01in");
   LSTR MSG_MOVE_01IN                      = _UxGT("Move 0.1in");
