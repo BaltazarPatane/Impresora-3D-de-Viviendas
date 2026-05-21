@@ -263,6 +263,534 @@ MarlinState marlin_state = MF_INITIALIZING;
 // For M109 and M190, this flag may be cleared (by M108) to exit the wait loop
 bool wait_for_heatup = true;
 
+//BALTA
+// Los siguientes procesos y comunicación de encoders fueron hechos por un ingeniero electrónico que es parte del proyecto
+// Yo lo adapté para que no se interpusiera con la comunicación serial del Marlin
+
+// Pines y RS485
+#define DE_PIN 2
+#define RE_PIN 2
+HardwareSerial &RS485 = Serial3;
+
+// Baud actual del bus RS485 de los encoders
+static const uint32_t BUS_BAUD = 9600;
+
+// IDs de los encoders en el bus Modbus
+static const uint8_t ENCODER1_ID = 1;
+static const uint8_t ENCODER2_ID = 2;
+
+// Timeout de espera de respuesta
+static const uint32_t RESPONSE_TIMEOUT_MS = 20;
+
+// Resolución de una vuelta del encoder
+// Ajustado según tu modelo Briter BRT50-R0M32768
+static const uint32_t COUNTS_PER_TURN = 32768UL;
+
+// Variables de control (visibles para otras unidades mediante extern en MarlinCore.h)
+float sp1_mm = 0;
+float sp2_mm = 0;
+bool  spReady = false;
+float h1_mm = 0;
+float h2_mm = 0;
+
+// Constantes
+// ENC1 + DIST2
+float ENC1_A1 = 3495.039200f;
+float ENC1_D1 = 460.594600f;
+float ENC1_A2 = -29.571400f;
+float ENC1_D2 = -15.891700f;
+float ENC1_C  = -444.702900f;
+
+// ENC2 + DIST1
+float ENC2_A1 = 3724.098000f;
+float ENC2_D1 = 881.813300f;
+float ENC2_A2 = -113.904200f;
+float ENC2_D2 = -96.819000f;
+float ENC2_C  = -784.994300f;
+
+// Funciones ángulos
+
+float degToRad(float deg) {
+  return deg * PI / 180.0f;
+}
+
+float heightFromEnc1(float angDeg) {
+  float a = degToRad(angDeg);
+
+  return ENC1_A1 * sin(a) +
+         ENC1_D1 * cos(a) +
+         ENC1_A2 * sin(2 * a) +
+         ENC1_D2 * cos(2 * a) +
+         ENC1_C;
+}
+
+float heightFromEnc2(float angDeg) {
+  float a = degToRad(angDeg);
+
+  return ENC2_A1 * sin(a) +
+         ENC2_D1 * cos(a) +
+         ENC2_A2 * sin(2 * a) +
+         ENC2_D2 * cos(2 * a) +
+         ENC2_C;
+}
+
+
+// --- funciones auxiliares estáticas (no exportamos símbolos innecesarios) ---
+uint16_t crc16Modbus(const uint8_t *data, uint8_t len) {
+  uint16_t crc = 0xFFFF;
+  for (uint8_t i = 0; i < len; i++) {
+    crc ^= data[i];
+    for (uint8_t j = 0; j < 8; j++) {
+      if (crc & 0x0001) {
+        crc >>= 1;
+        crc ^= 0xA001;
+      } else {
+        crc >>= 1;
+      }
+    }
+  }
+  return crc;
+}
+// ======================================================
+// CONTROL DEL TRANSCEPTOR RS485
+void rs485TxEnable() {
+  digitalWrite(DE_PIN, HIGH);
+  digitalWrite(RE_PIN, HIGH);
+  delayMicroseconds(50);
+}
+
+void rs485RxEnable() {
+  RS485.flush();          // Espera a que termine de transmitirse la trama
+  delayMicroseconds(50);
+  digitalWrite(DE_PIN, LOW);
+  digitalWrite(RE_PIN, LOW);
+}
+
+void clearRS485Buffer() {
+  while (RS485.available()) {
+    RS485.read();
+  }
+}
+
+// ======================================================
+// ESCRIBIR UN REGISTRO MODBUS (FUNCIÓN 0x06)
+// ------------------------------------------------------
+// Permite escribir un único registro holding del encoder
+bool writeSingleRegister(uint8_t id, uint16_t reg, uint16_t value) {
+  uint8_t frame[8];
+
+  frame[0] = id;
+  frame[1] = 0x06;
+  frame[2] = (reg >> 8) & 0xFF;
+  frame[3] = reg & 0xFF;
+  frame[4] = (value >> 8) & 0xFF;
+  frame[5] = value & 0xFF;
+
+  uint16_t crc = crc16Modbus(frame, 6);
+  frame[6] = crc & 0xFF;         // CRC low
+  frame[7] = (crc >> 8) & 0xFF;  // CRC high
+
+  clearRS485Buffer();
+
+  rs485TxEnable();
+  RS485.write(frame, 8);
+  rs485RxEnable();
+
+  // La respuesta válida de la función 0x06 repite exactamente la trama enviada
+  uint8_t resp[8];
+  int len = 0;
+  unsigned long t0 = millis();
+
+  while ((millis() - t0) < RESPONSE_TIMEOUT_MS && len < 8) {
+    if (RS485.available()) {
+      resp[len++] = RS485.read();
+    }
+  }
+
+  if (len != 8) return false;
+
+  uint16_t crcRx   = (uint16_t)resp[6] | ((uint16_t)resp[7] << 8);
+  uint16_t crcCalc = crc16Modbus(resp, 6);
+  if (crcRx != crcCalc) return false;
+
+  for (int i = 0; i < 6; i++) {
+    if (resp[i] != frame[i]) return false;
+  }
+
+  return true;
+}
+// ======================================================
+// FUNCIONES DE CONFIGURACIÓN DEL ENCODER
+// ======================================================
+
+// Setea el cero actual del encoder
+// Registro 0x0008 = 0x0001
+bool setZero(uint8_t id) {
+  return writeSingleRegister(id, 0x0008, 0x0001);
+}
+
+bool zero_encoders() {
+  const bool ok1 = setZero(ENCODER1_ID),
+             ok2 = setZero(ENCODER2_ID);
+  return ok1 && ok2;
+}
+
+// Configura el sentido de incremento del valor del encoder
+// direction = 0x0000 -> clockwise
+// direction = 0x0001 -> counterclockwise
+bool setDirection(uint8_t id, uint16_t direction) {
+  return writeSingleRegister(id, 0x0009, direction);
+}
+
+// ======================================================
+// SETEAR VALOR ACTUAL DEL ENCODER
+// ------------------------------------------------------
+// Función basada en el manual BRITER/BriterEncoder.
+// Usa el registro 0x000B: "Set encoder current value".
+// Es similar conceptualmente a setZero(id), pero en vez
+// de hacer que la posición actual valga 0, hace que la
+// posición actual valga el conteo indicado.
+// Para BRT**-R0M32768: rango válido 0..32767.
+bool setCurrentValue(uint8_t id, uint16_t value) {
+  if ((uint32_t)value >= COUNTS_PER_TURN) {
+    return false;
+  }
+
+  return writeSingleRegister(id, 0x000B, value);
+}
+
+
+// ------------------------------------------------------
+// Convierte un ángulo de 0..360 grados al valor crudo
+// correspondiente del encoder y lo escribe con setCurrentValue().
+// Ejemplos para 32768 cuentas/vuelta:
+// 0°   -> 0
+// 90°  -> 8192
+// 180° -> 16384
+// 270° -> 24576
+bool setCurrentAngleDeg(uint8_t id, float angleDeg) {
+  if (!(angleDeg > -1000000.0f && angleDeg < 1000000.0f)) {
+    return false;
+  }
+
+  angleDeg = normalizeEncoderAngleDeg(angleDeg);
+
+  uint16_t value = (uint16_t)((angleDeg * (float)COUNTS_PER_TURN / 360.0f) + 0.5f);
+
+  if ((uint32_t)value >= COUNTS_PER_TURN) {
+    value = 0;
+  }
+
+  return setCurrentValue(id, value);
+}
+
+// ------------------------------------------------------
+static float normalizeEncoderAngleDeg(float angleDeg) {
+  while (angleDeg < 0.0f) {
+    angleDeg += 360.0f;
+  }
+
+  while (angleDeg >= 360.0f) {
+    angleDeg -= 360.0f;
+  }
+
+  return angleDeg;
+}
+
+// ------------------------------------------------------
+static float encoderHeightErrorSq(float (*heightFn)(float), float angleDeg, const float target_mm) {
+  const float err = heightFn(normalizeEncoderAngleDeg(angleDeg)) - target_mm;
+  return err * err;
+}
+
+// ------------------------------------------------------
+static float angleFromEncoderHeight(float (*heightFn)(float), const float target_mm, float &error_mm) {
+  static const float ROOT_EPS_MM = 0.001f;
+
+  float prev_angle = 0.0f;
+  float prev_err = heightFn(prev_angle) - target_mm;
+
+  if (fabs(prev_err) <= ROOT_EPS_MM) {
+    error_mm = fabs(prev_err);
+    return prev_angle;
+  }
+
+  for (uint16_t i = 1; i <= 360; i++) {
+    const float angle = (float)i;
+    const float err = heightFn(normalizeEncoderAngleDeg(angle)) - target_mm;
+
+    if (fabs(err) <= ROOT_EPS_MM) {
+      error_mm = fabs(err);
+      return normalizeEncoderAngleDeg(angle);
+    }
+
+    if ((prev_err < 0.0f && err > 0.0f) || (prev_err > 0.0f && err < 0.0f)) {
+      float lo = prev_angle;
+      float hi = angle;
+      float lo_err = prev_err;
+
+      for (uint8_t j = 0; j < 24; j++) {
+        const float mid = (lo + hi) * 0.5f;
+        const float mid_err = heightFn(normalizeEncoderAngleDeg(mid)) - target_mm;
+
+        if ((lo_err < 0.0f && mid_err > 0.0f) || (lo_err > 0.0f && mid_err < 0.0f)) {
+          hi = mid;
+        }
+        else {
+          lo = mid;
+          lo_err = mid_err;
+        }
+      }
+
+      const float best_angle = normalizeEncoderAngleDeg((lo + hi) * 0.5f);
+      error_mm = fabs(heightFn(best_angle) - target_mm);
+      return best_angle;
+    }
+
+    prev_angle = angle;
+    prev_err = err;
+  }
+
+  float best_angle = 0.0f;
+  float best_error = encoderHeightErrorSq(heightFn, best_angle, target_mm);
+
+  for (uint16_t i = 1; i < 360; i++) {
+    const float angle = (float)i;
+    const float error = encoderHeightErrorSq(heightFn, angle, target_mm);
+
+    if (error < best_error) {
+      best_error = error;
+      best_angle = angle;
+    }
+  }
+
+  float lo = best_angle - 1.5f;
+  float hi = best_angle + 1.5f;
+
+  for (uint8_t i = 0; i < 24; i++) {
+    const float third = (hi - lo) / 3.0f;
+    const float m1 = lo + third;
+    const float m2 = hi - third;
+
+    if (encoderHeightErrorSq(heightFn, m1, target_mm) < encoderHeightErrorSq(heightFn, m2, target_mm)) {
+      hi = m2;
+    }
+    else {
+      lo = m1;
+    }
+  }
+
+  best_angle = normalizeEncoderAngleDeg((lo + hi) * 0.5f);
+  error_mm = fabs(heightFn(best_angle) - target_mm);
+  return best_angle;
+}
+
+// ------------------------------------------------------
+bool set_encoders_height_mm(float height_mm) {
+  if (!(height_mm > -1000000.0f && height_mm < 1000000.0f)) {
+    return false;
+  }
+
+  float err1 = 0.0f;
+  float err2 = 0.0f;
+  const float angle1 = angleFromEncoderHeight(heightFromEnc1, height_mm, err1);
+  const float angle2 = angleFromEncoderHeight(heightFromEnc2, height_mm, err2);
+
+  if (err1 > 2.0f || err2 > 2.0f) {
+    return false;
+  }
+
+  const bool ok1 = setCurrentAngleDeg(ENCODER1_ID, angle1);
+  const bool ok2 = setCurrentAngleDeg(ENCODER2_ID, angle2);
+
+  if (ok1 && ok2) {
+    h1_mm = height_mm;
+    h2_mm = height_mm;
+    Planner::destino_local_Z = height_mm;
+    Planner::z_anterior = height_mm;
+    return true;
+  }
+
+  return false;
+}
+// ======================================================
+
+
+// Configura el baudrate del encoder
+// baudCode:
+// 0x0000 = 9600
+// 0x0001 = 19200
+// 0x0002 = 38400
+// 0x0003 = 57600
+// 0x0004 = 115200
+bool setBaudRate(uint8_t id, uint16_t baudCode) {
+  return writeSingleRegister(id, 0x0005, baudCode);
+}
+
+
+// ======================================================
+// LEER HOLDING REGISTERS (FUNCIÓN 0x03)
+// ------------------------------------------------------
+// Envía una petición Modbus para leer uno o más registros
+// y valida:
+// - longitud
+// - ID
+// - función
+// - byte count
+// - CRC
+bool readHoldingRegisters(uint8_t id, uint16_t startReg, uint16_t numRegs,
+                          uint8_t *resp, int &respLen) {
+  uint8_t frame[8];
+
+  frame[0] = id;
+  frame[1] = 0x03;
+  frame[2] = (startReg >> 8) & 0xFF;
+  frame[3] = startReg & 0xFF;
+  frame[4] = (numRegs >> 8) & 0xFF;
+  frame[5] = numRegs & 0xFF;
+
+  uint16_t crc = crc16Modbus(frame, 6);
+  frame[6] = crc & 0xFF;
+  frame[7] = (crc >> 8) & 0xFF;
+
+  // Respuesta esperada:
+  // ID + FUNC + BYTECOUNT + DATOS(2*numRegs) + CRC(2)
+  const int expectedLen = 5 + 2 * numRegs;
+
+  clearRS485Buffer();
+
+  rs485TxEnable();
+  RS485.write(frame, 8);
+  rs485RxEnable();
+
+  respLen = 0;
+  unsigned long t0 = millis();
+
+  while ((millis() - t0) < RESPONSE_TIMEOUT_MS && respLen < expectedLen) {
+    if (RS485.available()) {
+      resp[respLen++] = RS485.read();
+    }
+  }
+
+  if (respLen != expectedLen) return false;
+  if (resp[0] != id) return false;
+  if (resp[1] != 0x03) return false;
+  if (resp[2] != (2 * numRegs)) return false;
+
+  uint16_t crcRx   = (uint16_t)resp[respLen - 2] | ((uint16_t)resp[respLen - 1] << 8);
+  uint16_t crcCalc = crc16Modbus(resp, respLen - 2);
+  if (crcRx != crcCalc) return false;
+
+  return true;
+}
+
+
+// ======================================================
+// LECTURA DE ÁNGULO DESDE EL VALOR TOTAL DE 32 BITS
+// ------------------------------------------------------
+// Lee los registros 0x0000 y 0x0001 (valor total de 32 bits)
+// y obtiene el ángulo equivalente en una vuelta.
+bool readAngleFromTotalValue(uint8_t id, float &angulo) {
+  uint8_t resp[16];
+  int len = 0;
+
+  if (!readHoldingRegisters(id, 0x0000, 0x0002, resp, len)) {
+    return false;
+  }
+
+  uint32_t totalValue =
+      ((uint32_t)resp[3] << 24) |
+      ((uint32_t)resp[4] << 16) |
+      ((uint32_t)resp[5] << 8)  |
+      ((uint32_t)resp[6]);
+
+  uint16_t singleTurn = totalValue % COUNTS_PER_TURN;
+  angulo = (singleTurn * 360.0f) / COUNTS_PER_TURN;
+
+  return true;
+}
+
+
+// ======================================================
+// LECTURA DE ÁNGULO DESDE EL REGISTRO SINGLE TURN
+// ------------------------------------------------------
+// Alternativa de lectura:
+// lee directamente el registro 0x0003 y lo convierte a grados.
+// Esta función se deja disponible por si querés ensayarla.
+bool readAngleFromSingleTurnRegister(uint8_t id, float &angulo) {
+  uint8_t resp[16];
+  int len = 0;
+
+  if (!readHoldingRegisters(id, 0x0003, 0x0001, resp, len)) {
+    return false;
+  }
+
+  uint16_t singleTurn = ((uint16_t)resp[3] << 8) | resp[4];
+  angulo = (singleTurn * 360.0f) / COUNTS_PER_TURN;
+
+  return true;
+}
+
+// --- funciones públicas (mantener no-static porque se usan desde setup()/idle()) ---
+
+void encoders() {
+
+  RS485.begin(BUS_BAUD, SERIAL_8N1);
+  pinMode(DE_PIN, OUTPUT);
+  pinMode(RE_PIN, OUTPUT);
+  digitalWrite(DE_PIN, LOW);
+  digitalWrite(RE_PIN, LOW);
+
+  //setZero(ENCODER1_ID);
+  //setZero(ENCODER2_ID);
+
+  setDirection(ENCODER2_ID, 0x0001);
+}
+
+int lectura = 0;
+void leer_encoder() {
+
+  float ang1 = NAN;
+  float ang2 = NAN;
+
+  bool ok1 = readAngleFromTotalValue(ENCODER1_ID, ang1);
+  bool ok2 = readAngleFromTotalValue(ENCODER2_ID, ang2);
+
+  // ==============================
+  // CÁLCULO ENCODER 1
+  // ==============================
+  if (ok1) {
+    h1_mm = heightFromEnc1(ang1);
+  }
+
+  // ==============================
+  // CÁLCULO ENCODER 2
+  // ==============================
+  if (ok2) {
+    h2_mm = heightFromEnc2(ang2);
+  }
+
+  // ==============================
+  // DEBUG (opcional)
+  // ==============================
+
+  lectura++;
+  if (lectura == 20) {
+    lectura = 0;
+    if (!ok1) {
+      SERIAL_ECHOPGM("ERR, ");
+    }
+    else {SERIAL_ECHO(h1_mm); SERIAL_ECHOPGM(", ");}
+
+    if (!ok2) {
+      SERIAL_ECHOLNPGM("ERR");
+    }
+    else {SERIAL_ECHOLN(h2_mm);}
+    
+    SERIAL_ECHOLN(Planner::destino_local_Z);
+  }
+}
+
 // For M0/M1, this flag may be cleared (by M108) to exit the wait-for-user loop
 #if HAS_RESUME_CONTINUE
   bool wait_for_user; // = false;
@@ -753,6 +1281,10 @@ inline void manage_inactivity(const bool no_stepper_sleep=false) {
   #endif
 }
 
+
+bool z_btn_subir_estado = true;
+bool z_btn_bajar_estado = true;
+
 /**
  * Standard idle routine keeps the machine alive:
  *  - Core Marlin activities
@@ -776,6 +1308,130 @@ inline void manage_inactivity(const bool no_stepper_sleep=false) {
  *  - Handle Joystick jogging
  */
 void idle(const bool no_stepper_sleep/*=false*/) {
+
+  // BALTA
+  // Jog encolado para los botones manuales de X/Y.
+  static millis_t next_xy_button_move_ms = 0;
+  const millis_t ms = millis();
+
+  if (ELAPSED(ms, next_xy_button_move_ms)) {
+    float x_delta = 0, y_delta = 0;
+
+    if (READ(X_BTN_SUBIR) == LOW) x_delta += movimiento_boton;
+    if (READ(X_BTN_BAJAR) == LOW) x_delta -= movimiento_boton;
+    if (READ(Y_BTN_SUBIR) == LOW) y_delta += movimiento_boton;
+    if (READ(Y_BTN_BAJAR) == LOW) y_delta -= movimiento_boton;
+
+    if (x_delta || y_delta) {
+      #if HAS_SOFTWARE_ENDSTOPS
+        const bool restore_soft_endstops = soft_endstop._enabled;
+        const uint8_t xy_button_cmds = restore_soft_endstops ? 3 : 1;
+      #else
+        constexpr uint8_t xy_button_cmds = 1;
+      #endif
+
+      if (!queue.ring_buffer.full(xy_button_cmds) && planner.movesplanned() < 4) {
+        char cmd[MAX_CMD_SIZE], x_str[16], y_str[16];
+        const float target_x = current_position.x + x_delta,
+                    target_y = current_position.y + y_delta;
+
+        if (x_delta && y_delta)
+          sprintf_P(cmd, PSTR("G1 X%s Y%s"), dtostrf(target_x, 1, 3, x_str), dtostrf(target_y, 1, 3, y_str));
+        else if (x_delta)
+          sprintf_P(cmd, PSTR("G1 X%s"), dtostrf(target_x, 1, 3, x_str));
+        else
+          sprintf_P(cmd, PSTR("G1 Y%s"), dtostrf(target_y, 1, 3, y_str));
+
+        #if HAS_SOFTWARE_ENDSTOPS
+          if (restore_soft_endstops) queue.enqueue_one(F("M211S0"));
+        #endif
+        queue.enqueue_one(cmd);
+        #if HAS_SOFTWARE_ENDSTOPS
+          if (restore_soft_endstops) queue.enqueue_one(F("M211S1"));
+        #endif
+      }
+
+      next_xy_button_move_ms = ms + 20UL;
+    }
+  }
+
+  leer_encoder();
+
+  // Botones de Z
+  //FALTA
+  
+  if (READ(Z_BTN_SUBIR) == LOW) { // Presionado
+    z_btn_subir_estado = false; 
+    digitalWrite(Z1_UP_PIN, HIGH);
+    digitalWrite(Z1_DOWN_PIN, LOW);
+    digitalWrite(Z2_UP_PIN, HIGH);
+    digitalWrite(Z2_DOWN_PIN, LOW);
+  } 
+  else if ((READ(Z_BTN_SUBIR) == HIGH) && (!z_btn_subir_estado)) { // Justo cuando se suelta
+    z_btn_subir_estado = true;
+    digitalWrite(Z1_UP_PIN, LOW);
+    digitalWrite(Z1_DOWN_PIN, LOW);
+    digitalWrite(Z2_UP_PIN, LOW);
+    digitalWrite(Z2_DOWN_PIN, LOW);
+    Planner::destino_local_Z = h1_mm; 
+  }
+
+  // Botón BAJAR (Lógica similar)
+  if (READ(Z_BTN_BAJAR) == LOW) {
+    z_btn_bajar_estado = false;
+    digitalWrite(Z1_UP_PIN, LOW);
+    digitalWrite(Z1_DOWN_PIN, HIGH);
+    digitalWrite(Z2_UP_PIN, LOW);
+    digitalWrite(Z2_DOWN_PIN, HIGH);
+  }
+  else if ((READ(Z_BTN_BAJAR) == HIGH) && (!z_btn_bajar_estado)) {
+    z_btn_bajar_estado = true;
+    digitalWrite(Z1_UP_PIN, LOW);
+    digitalWrite(Z1_DOWN_PIN, LOW);
+    digitalWrite(Z2_UP_PIN, LOW);
+    digitalWrite(Z2_DOWN_PIN, LOW);
+    Planner::destino_local_Z = h1_mm;
+  }
+
+  // BALTA
+  // Control de los encoders para revisar si hay comportamiento inusual mientras están quietos
+  // ========== CONTROL ENC1 ==========
+  if ((READ(Z_BTN_SUBIR) == HIGH) && (READ(Z_BTN_BAJAR) == HIGH)){
+    float err1 = Planner::destino_local_Z - h1_mm;
+
+    if (fabs(err1) <= tolerancia_Z) {
+      digitalWrite(Z1_UP_PIN, LOW);
+      digitalWrite(Z1_DOWN_PIN, LOW);
+    } else {
+      if (Planner::destino_local_Z > h1_mm) {
+        digitalWrite(Z1_UP_PIN, HIGH);   // subir
+        digitalWrite(Z1_DOWN_PIN, LOW);
+       } else {
+        digitalWrite(Z1_UP_PIN, LOW);  // bajar
+        digitalWrite(Z1_DOWN_PIN, HIGH);
+      }
+    }
+  }
+
+  // ========== CONTROL ENC2 ==========
+  if ((READ(Z_BTN_SUBIR) == HIGH) && (READ(Z_BTN_BAJAR) == HIGH)){
+    float err2 = Planner::destino_local_Z - h2_mm;
+
+    if (fabs(err2) <= tolerancia_Z) {
+      digitalWrite(Z2_UP_PIN, LOW);
+      digitalWrite(Z2_DOWN_PIN, LOW);
+    } else {
+      if (Planner::destino_local_Z > h2_mm) {
+        digitalWrite(Z2_UP_PIN, HIGH);   // subir
+        digitalWrite(Z2_DOWN_PIN, LOW);
+       } else {
+        digitalWrite(Z2_UP_PIN, LOW);  // bajar
+        digitalWrite(Z2_DOWN_PIN, HIGH);
+      }
+    }
+  }
+
+
   #ifdef MAX7219_DEBUG_PROFILE
     CodeProfiler idle_profiler;
   #endif
@@ -1369,6 +2025,8 @@ void setup() {
 
   SETUP_RUN(stepper.init());          // Init stepper. This enables interrupts!
 
+
+
   #if HAS_SERVOS
     SETUP_RUN(servo_init());
   #endif
@@ -1646,6 +2304,36 @@ void setup() {
   #if ENABLED(BD_SENSOR)
     SETUP_RUN(bdl.init(I2C_BD_SDA_PIN, I2C_BD_SCL_PIN, I2C_BD_DELAY));
   #endif
+
+  // BALTA
+ 
+  encoders();
+  
+  pinMode(Z1_UP_PIN, OUTPUT);
+  pinMode(Z2_UP_PIN, OUTPUT);
+  pinMode(Z1_DOWN_PIN, OUTPUT);
+  pinMode(Z2_DOWN_PIN, OUTPUT);
+  pinMode(X_BTN_BAJAR, INPUT_PULLUP);
+  pinMode(X_BTN_SUBIR, INPUT_PULLUP);
+  pinMode(Y_BTN_BAJAR, INPUT_PULLUP);
+  pinMode(Y_BTN_SUBIR, INPUT_PULLUP);
+  pinMode(Z_BTN_BAJAR, INPUT_PULLUP);
+  pinMode(Z_BTN_SUBIR, INPUT_PULLUP);
+
+
+  extDigitalWrite(Z1_UP_PIN, 0);
+  hal.set_pwm_duty(Z1_UP_PIN, 0);
+  extDigitalWrite(Z2_UP_PIN, 0);
+  hal.set_pwm_duty(Z2_UP_PIN, 0);
+  extDigitalWrite(Z1_DOWN_PIN, 0);
+  hal.set_pwm_duty(Z1_DOWN_PIN, 0);
+  extDigitalWrite(Z2_DOWN_PIN, 0);
+  hal.set_pwm_duty(Z2_DOWN_PIN, 0);
+  
+  // BALTA
+  // Leo las alturas iniciales de los pistones
+  leer_encoder();
+  //-------------------------------------------------------------------------
 
   marlin_state = MF_RUNNING;
 
