@@ -36,6 +36,7 @@
 #include "../../libs/numtostr.h"
 
 #include "../../module/motion.h"
+#include "../../module/planner.h"
 #include "../../module/temperature.h"
 
 #include "../../gcode/parser.h" // for units (and volumetric)
@@ -493,9 +494,7 @@ void MarlinUI::draw_status_screen() {
   #if HAS_Y_AXIS
     static char ystring[xystorage];
   #endif
-  #if HAS_Z_AXIS
-    static char zstring[8];
-  #endif
+  static char zstring[12];
 
   #if ENABLED(FILAMENT_LCD_DISPLAY)
     static char wstring[5], mstring[4];
@@ -503,7 +502,7 @@ void MarlinUI::draw_status_screen() {
 
   const bool show_e_total = TERN0(LCD_SHOW_E_TOTAL, printingIsActive());
 
-  static u8g_uint_t progress_bar_solid_width = 0;
+  static u8g_uint_t progress_bar_solid_width __attribute__((unused)) = 0;
 
   // At the first page, generate new display values
   if (first_page) {
@@ -533,7 +532,10 @@ void MarlinUI::draw_status_screen() {
       #endif
     }
     else {
-      strcpy(xstring, is_inch ? ftostr53_63(LINEAR_UNIT(lpos.x)) : ftostr4sign(lpos.x));
+      // BALTA
+      float x_modificado = lpos.x - Planner::correccion_acumulada_x; 
+
+      strcpy(xstring, is_inch ? ftostr53_63(LINEAR_UNIT(x_modificado)) : ftostr4sign(x_modificado));
       TERN_(HAS_Y_AXIS, strcpy(ystring, is_inch ? ftostr53_63(LINEAR_UNIT(lpos.y)) : ftostr4sign(lpos.y)));
     }
 
@@ -820,12 +822,27 @@ void MarlinUI::draw_status_screen() {
         }
 
       #endif
+      
+      /*
+      // BALTA
 
-      TERN_(HAS_Z_AXIS, _draw_axis_value(Z_AXIS, zstring, blink));
+      //Paso de float a string
+      const bool is_inch = parser.using_inch_units();
+      float z_temporal = Planner::destino_local_Z;
+      strcpy(zstring, is_inch ? ftostr42_52(LINEAR_UNIT(z_temporal)) : ftostr52sp(z_temporal));
 
+      // Dibuja la letra 'Z' y el valor alineado (hardcodeados)
+      lcd_put_lchar((2*(is_inch ? XYZ_SPACING_IN : XYZ_SPACING)) + (is_inch ? X_LABEL_POS_IN : X_LABEL_POS), XYZ_BASELINE, 'Z');
+      lcd_moveto((2*(is_inch ? XYZ_SPACING_IN : XYZ_SPACING)) + (is_inch ? X_VALUE_POS_IN : X_VALUE_POS), XYZ_BASELINE);
+
+      lcd_put_u8str(zstring);
+
+      */
+     
       #if NONE(XYZ_NO_FRAME, XYZ_HOLLOW_FRAME)
         u8g.setColorIndex(1); // black on white
       #endif
+      
     }
   }
 
