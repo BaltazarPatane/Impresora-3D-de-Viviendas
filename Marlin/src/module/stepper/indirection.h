@@ -80,6 +80,13 @@
 void restore_stepper_drivers();  // Called by powerManager.power_on()
 void reset_stepper_drivers();    // Called by settings.load / settings.reset
 
+
+//BALTA
+// A PARTIR DE ACÁ SE DECLARAN LAS MACROS PARA ESCRIBIR FÍSICAMENTE
+// SI QUIERO AGREGAR PINES, TIENEN QUE ESTAR CREADAS SUN FUNCIONES ACÁ
+
+
+
 // X Stepper
 #if HAS_X_AXIS
   #ifndef X_ENABLE_INIT
@@ -94,6 +101,9 @@ void reset_stepper_drivers();    // Called by settings.load / settings.reset
   #endif
   #define X_STEP_INIT() SET_OUTPUT(X_STEP_PIN)
   #ifndef X_STEP_WRITE
+    // BALTA (W4)
+    // ESTE ES EL ÚLTIMO PASO QUE ME IMPORTA A NIVEL SOFTWARE
+    // EL SIGUIENTE YA ESTÁ ENCAPSULAOD EN HAL
     #define X_STEP_WRITE(STATE) WRITE(X_STEP_PIN,STATE)
   #endif
   #define X_STEP_READ() bool(READ(X_STEP_PIN))

@@ -84,6 +84,16 @@
 
 #if MB(RAMPS_OLD)
   #include "ramps/pins_RAMPS_OLD.h"                 // ATmega2560, ATmega1280               env:mega2560 env:mega1280
+
+
+
+#elif MB(R3_Shield)
+  #include "board_propia/pins_R3_Shield.h" // ATmega2560  env:mega2560
+  //BALTA
+  //Esta línea lo que hace es fijarse en boards.h el código de la placa (mi código es 1001)
+  //Si el código (1001) en Configuration.h es el mismo, utiliza la distribución de pines correspondiente
+  
+
 #elif MB(RAMPS_13_EFB, RAMPS_13_EEB, RAMPS_13_EFF, RAMPS_13_EEF, RAMPS_13_SF)
   #include "ramps/pins_RAMPS_13.h"                  // ATmega2560, ATmega1280               env:mega2560 env:mega1280
 #elif MB(RAMPS_14_EFB, RAMPS_14_EEB, RAMPS_14_EFF, RAMPS_14_EEF, RAMPS_14_SF)

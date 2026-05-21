@@ -25,6 +25,8 @@
  */
 
 #include "../../../inc/MarlinConfig.h"
+#include "../../../MarlinCore.h"
+
 
 #if HAS_ABL_NOT_UBL
 

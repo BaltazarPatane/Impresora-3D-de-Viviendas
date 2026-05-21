@@ -24,6 +24,8 @@
 
 #include "../gcode.h"
 
+#include "../../MarlinCore.h"
+
 #include "../../module/endstops.h"
 #include "../../module/planner.h"
 #include "../../module/stepper.h" // for various
@@ -202,6 +204,11 @@
  *  Z   Home to the Z endstop
  */
 void GcodeSuite::G28() {
+
+  // BALTA
+  // Impongo el valor de los encoders a 0
+  zero_encoders();
+
   DEBUG_SECTION(log_G28, "G28", DEBUGGING(LEVELING));
   if (DEBUGGING(LEVELING)) log_machine_info();
 
@@ -244,6 +251,12 @@ void GcodeSuite::G28() {
   TERN_(EXTENSIBLE_UI, ExtUI::onHomingStart());
 
   planner.synchronize();          // Wait for planner moves to finish!
+
+
+  //BALTA
+  //Mando a Z al 0
+  // Ahora lo hace solo
+  //gcode.process_subcommands_now(PSTR("G0 Z0"));
 
   SET_SOFT_ENDSTOP_LOOSE(false);  // Reset a leftover 'loose' motion state
 

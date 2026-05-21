@@ -21,6 +21,7 @@
  */
 
 #include "../../inc/MarlinConfigPre.h"
+#include <avr/wdt.h>
 
 #if HAS_SOFTWARE_ENDSTOPS
 
