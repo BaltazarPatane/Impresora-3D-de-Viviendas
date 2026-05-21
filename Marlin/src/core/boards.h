@@ -36,6 +36,11 @@
 
 #define BOARD_RAMPS_OLD               1000  // MEGA/RAMPS up to 1.2
 
+//BALTA
+//Creo un código particular para la placa nueva
+#define BOARD_R3_Shield               1001  //PLACA NUEVA
+
+
 #define BOARD_RAMPS_13_EFB            1010  // RAMPS 1.3 (Power outputs: Hotend, Fan, Bed)
 #define BOARD_RAMPS_13_EEB            1011  // RAMPS 1.3 (Power outputs: Hotend0, Hotend1, Bed)
 #define BOARD_RAMPS_13_EFF            1012  // RAMPS 1.3 (Power outputs: Hotend, Fan0, Fan1)
