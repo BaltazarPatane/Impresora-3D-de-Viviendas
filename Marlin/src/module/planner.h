@@ -388,6 +388,49 @@ struct PlannerHints {
 class Planner {
   public:
 
+    // BALTA (Z0)
+    // Variables para frenar encolado de movimientos y saber que terminó
+    // Dirección del movimiento del pistón
+    // Siguiente paso del psitón
+    // Destino del pistón
+    // Variable para encolar movimeintos sin que se guarden
+    // Datos del encoder
+    // Altura inicial
+    // Rutina de interrupción de finalización del pistón
+    // Rutina para aplicar movimientos y correcciones del pistón
+    // Rutinas para pasar los valores de los encoders a alturas
+
+    static volatile bool Z_BUSY_1;
+    static volatile bool Z_BUSY_2;
+
+    static volatile bool subiendo;
+
+    static volatile float destino_local_Z;
+
+    static volatile float destino_final_Z;
+
+    static volatile bool fixing;
+
+    static volatile bool manual;
+
+    static volatile float h_inicial_1;
+    static volatile float h_inicial_2;
+
+    static volatile float correccion_acumulada_x;
+
+    static volatile float z_anterior;
+
+    static void z_isr_1();
+    static void z_isr_2();
+    static void apagar_Z1();
+    static void apagar_Z2();
+    static void subir_Z1();
+    static void subir_Z2();
+    static void bajar_Z1();
+    static void bajar_Z2();
+
+    static void mover_corregir();
+
     /**
      * The move buffer, calculated in stepper steps
      *
