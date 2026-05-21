@@ -84,3 +84,19 @@ bool pin_is_protected(const pin_t pin);
 #endif
 
 extern const char M112_KILL_STR[];
+
+//BALTA
+// ==================== ENCODERS (declaraciones públicas) ====================
+// Si otras unidades necesitan acceder a estas variables/funciones,
+// se declaran aquí como extern.
+
+extern float sp1_mm;
+extern float sp2_mm;
+extern bool  spReady;
+extern float h1_mm;
+extern float h2_mm;
+
+void encoders();
+void leer_encoder();
+bool zero_encoders();
+bool set_encoders_height_mm(float height_mm);
