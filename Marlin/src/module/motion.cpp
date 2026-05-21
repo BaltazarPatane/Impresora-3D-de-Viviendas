@@ -355,6 +355,10 @@ void report_current_position_projected() {
 
 #else // CARTESIAN
 
+  // BALTA
+  // ACÁ SE FIJA SI LA POSICIÓN ES ALCANZABLE
+  // DEBERÍA CAMBIARLO PARA LOS PISTONES
+
   // Return true if the given position is within the machine bounds.
   bool position_is_reachable(TERN_(HAS_X_AXIS, const_float_t rx) OPTARG(HAS_Y_AXIS, const_float_t ry)) {
     if (TERN0(HAS_Y_AXIS, !COORDINATE_OKAY(ry, Y_MIN_POS - fslop, Y_MAX_POS + fslop))) return false;
@@ -1228,6 +1232,19 @@ FORCE_INLINE void segment_idle(millis_t &next_idle_ms) {
    *
    * Return true if 'current_position' was set to 'destination'
    */
+
+  // BALTA (PASO 3)
+  // ES IMPORTANTÍSIMO. CREA UN MOVIMIENTO LINEAL
+
+  /* line_to_destination_cartesian():
+  Esta función encapsula la política específica de nivelado/mesh: sólo ella necesita saber
+  si hay que fragmentar el movimiento en sub-movimientos (segmentación por malla).
+  Mantenerlo separado evita que el planner tenga que conocer todos los matices del bed-leveling.
+  
+  Si tienes un sistema con nivelado activo, aquí es donde se “rompe” un movimiento largo
+  en muchos segmentos más pequeños (que luego se calculan en el planner).
+  Es crítico porque impacta la fluidez del movimiento y la precisión Z. */
+
   inline bool line_to_destination_cartesian() {
     const float scaled_fr_mm_s = MMS_SCALED(feedrate_mm_s);
     #if HAS_MESH
@@ -1259,7 +1276,7 @@ FORCE_INLINE void segment_idle(millis_t &next_idle_ms) {
       }
     #endif // HAS_MESH
 
-    planner.buffer_line(destination, scaled_fr_mm_s);
+    planner.buffer_line(destination, scaled_fr_mm_s); // Add a new linear movement to the buffer
     return false; // caller will update current_position
   }
 
@@ -1391,6 +1408,20 @@ FORCE_INLINE void segment_idle(millis_t &next_idle_ms) {
 
 #endif // DUAL_X_CARRIAGE
 
+
+// BALTA (PASO 2)
+// ES IMPORTÁNTISIMO ESTE. SETEA LOS MOVIMIENTOS
+// Lo modifiqué bastante así que dejo como comentario el original
+// Ahora al hacer las correcciones de X por los movimientos de Z, interpreta que no se movió
+
+/* prepare_line_to_destination():
+  Es una capa de validación y policy: chequeos de seguridad (temperatura, límites, etc.) y
+  selección de algoritmos de nivel superior (segmentado vs directo) que deben estar antes de
+  que el planner recalcule velocidades/segmentos.
+
+  Aquí se “quita” la parte peligrosa del movimiento sin tocar la lógica de generación de pasos.
+  Mantener separado facilita añadir más checks (sensores nuevos) sin romper la planificación. */
+
 /**
  * Prepare a single move and get ready for the next one
  *
@@ -1403,7 +1434,11 @@ FORCE_INLINE void segment_idle(millis_t &next_idle_ms) {
  * Before exit, current_position is set to destination.
  */
 void prepare_line_to_destination() {
-  apply_motion_limits(destination);
+
+  // Guardo la posición actual del eje X
+  //xyze_pos_t posicion_real_marlin = current_position;
+
+  apply_motion_limits(destination); // Constrain the given coordinates to the software endstops.
 
   #if ANY(PREVENT_COLD_EXTRUSION, PREVENT_LENGTHY_EXTRUDE)
 
@@ -1451,11 +1486,21 @@ void prepare_line_to_destination() {
     #elif IS_KINEMATIC
       line_to_destination_kinematic()
     #else
-      line_to_destination_cartesian()
+      line_to_destination_cartesian() // Prepare a linear move in a Cartesian setup.
     #endif
   ) return;
 
-  current_position = destination;
+  // BALTA
+  // Si se está haciendo una corrección espero a que se haga y guardo la posición anterior como la actual
+  // Las funciones de sincronización ya venían con el Marlin
+  // Ya no uso más fixing, no lo saco por las dudas nada más
+  //if (Planner::fixing) {
+  //  planner.synchronize(); 
+  //  current_position = posicion_real_marlin;
+  //  sync_plan_position();
+  //}
+  //else
+  current_position = destination; // Update the current position of the axis
 }
 
 #if HAS_ENDSTOPS
