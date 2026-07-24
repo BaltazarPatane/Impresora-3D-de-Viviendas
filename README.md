@@ -1,142 +1,207 @@
-<p align="center"><img src="buildroot/share/pixmaps/logo/marlin-outrun-nf-500.png" height="250" alt="MarlinFirmware's logo" /></p>
-
-<h1 align="center">Marlin 3D Printer Firmware</h1>
-
 <p align="center">
-    <a href="/LICENSE"><img alt="GPL-V3.0 License" src="https://img.shields.io/github/license/marlinfirmware/marlin.svg"></a>
-    <a href="https://github.com/MarlinFirmware/Marlin/graphs/contributors"><img alt="Contributors" src="https://img.shields.io/github/contributors/marlinfirmware/marlin.svg"></a>
-    <a href="https://github.com/MarlinFirmware/Marlin/releases"><img alt="Last Release Date" src="https://img.shields.io/github/release-date/MarlinFirmware/Marlin"></a>
-    <a href="https://github.com/MarlinFirmware/Marlin/actions/workflows/ci-build-tests.yml"><img alt="CI Status" src="https://github.com/MarlinFirmware/Marlin/actions/workflows/ci-build-tests.yml/badge.svg"></a>
-    <a href="https://github.com/sponsors/thinkyhead"><img alt="GitHub Sponsors" src="https://img.shields.io/github/sponsors/thinkyhead?color=db61a2"></a>
-    <br />
-    <a href="https://fosstodon.org/@marlinfirmware"><img alt="Follow MarlinFirmware on Mastodon" src="https://img.shields.io/mastodon/follow/109450200866020466?domain=https%3A%2F%2Ffosstodon.org&logoColor=%2300B&style=social"></a>
+  <img src="buildroot/share/pixmaps/logo/marlin-outrun-nf-500.png" height="210" alt="Logo de Marlin Firmware">
 </p>
 
-Additional documentation can be found at the [Marlin Home Page](//marlinfw.org/).
-Please test this firmware and let us know if it misbehaves in any way. Volunteers are standing by!
+<h1 align="center">Firmware Marlin para impresora 3D de viviendas</h1>
 
-# Comentario del editor
-Este firmware fue modificado por Baltazar Patané para la impresora 3D de viviendas de la UNLP. Debido a que no sigue el flujo normal de edición que sugieren los desarrolladores de Marlin, agregué una etiqueta "BALTA" cada vez que algo fue modificado o que algo podría ser de interés para
-futuros cambios.
+<p align="center">
+  Adaptación de <strong>Marlin 2.1.2.5</strong> para una impresora de gran escala con movimiento cartesiano X/Y y un eje Z hidráulico realimentado por encoders absolutos.
+</p>
 
-## Marlin 2.1
+<p align="center">
+  <img alt="Base Marlin 2.1.2.5" src="https://img.shields.io/badge/Base-Marlin%202.1.2.5-00A6D6?style=flat-square">
+  <img alt="Microcontrolador ATmega2560" src="https://img.shields.io/badge/MCU-ATmega2560-008184?style=flat-square&logo=arduino&logoColor=white">
+  <img alt="Compilación con PlatformIO" src="https://img.shields.io/badge/Build-PlatformIO-F5822A?style=flat-square&logo=platformio&logoColor=white">
+  <a href="LICENSE"><img alt="Licencia GPL v3" src="https://img.shields.io/badge/Licencia-GPLv3-3DA639?style=flat-square"></a>
+</p>
 
-Marlin 2.1 continues to support both 32-bit ARM and 8-bit AVR boards while adding support for up to 9 coordinated axes and to up to 8 extruders.
+<p align="center">
+  Desarrollado por <strong>Baltazar Patané</strong> como parte de la Práctica Profesional Supervisada de Ingeniería en Computación de la UNLP.
+</p>
 
-Download earlier versions of Marlin on the [Releases page](//github.com/MarlinFirmware/Marlin/releases).
+---
 
-## Example Configurations
+## Descripción general
 
-Before you can build Marlin for your machine you'll need a configuration for your specific hardware. Upon request, your vendor will be happy to provide you with the complete source code and configurations for your machine, but you'll need to get updated configuration files if you want to install a newer version of Marlin. Fortunately, Marlin users have contributed dozens of tested configurations to get you started. Visit the [MarlinFirmware/Configurations](//github.com/MarlinFirmware/Configurations) repository to find the right configuration for your hardware.
+Este repositorio conserva el intérprete G-code, el planificador de movimientos y la interfaz de usuario de Marlin, pero reemplaza el tratamiento convencional del eje Z por un control específico para la mecánica de una impresora 3D de viviendas.
 
-## Building Marlin 2.1
+Los desplazamientos X/Y se ejecutan mediante dos motores en X y uno en Y. La altura se obtiene con dos pistones hidráulicos independientes, accionados por electroválvulas y realimentados mediante encoders absolutos RS485. El firmware traduce las posiciones Z expresadas en milímetros a la altura física del mecanismo y compensa automáticamente el desplazamiento que el movimiento angular introduce sobre X.
 
-To build and upload Marlin you will use one of these tools:
+> [!IMPORTANT]
+> Este firmware fue calibrado para un prototipo específico. Antes de utilizarlo en otra máquina se deben verificar el mapa de pines, el sentido de los actuadores, los límites mecánicos, las tablas de calibración y el circuito físico de emergencia.
 
-- The free [Visual Studio Code](//code.visualstudio.com/download) using the [Auto Build Marlin](//marlinfw.org/docs/basics/auto_build_marlin.html) extension.
-- The free [Arduino IDE](//www.arduino.cc/en/main/software) : See [Building Marlin with Arduino](//marlinfw.org/docs/basics/install_arduino.html)
-- You can also use VSCode with devcontainer : See [Installing Marlin (VSCode devcontainer)](http://marlinfw.org/docs/basics/install_devcontainer_vscode.html).
+## Arquitectura del sistema
 
-Marlin is optimized to build with the **PlatformIO IDE** extension for **Visual Studio Code**. You can still build Marlin with **Arduino IDE**, and we hope to improve the Arduino build experience, but at this time PlatformIO is the better choice.
+```mermaid
+flowchart TD
+    A["G-code, pantalla y botonera"] --> B["Marlin 2.1.2.5 modificado"]
+    B --> C["Planner cartesiano X/Y"]
+    C --> D["Motores X, X2 e Y"]
+    B --> E["Control hidráulico de Z"]
+    F["Encoders absolutos RS485"] --> E
+    E --> G["Electroválvulas de los pistones"]
+    E --> H["Compensación geométrica de X"]
+    H --> C
+```
 
-## 8-Bit AVR Boards
+La separación entre coordenadas lógicas y físicas permite conservar archivos G-code cartesianos:
 
-We intend to continue supporting 8-bit AVR boards in perpetuity, maintaining a single codebase that can apply to all machines. We want casual hobbyists and tinkerers and owners of older machines to benefit from the community's innovations just as much as those with fancier machines. Plus, those old AVR-based machines are often the best for your testing and feedback!
+- La **posición lógica** es la coordenada solicitada por el usuario y mostrada en pantalla.
+- La **posición física** incorpora la corrección necesaria para compensar la geometría angular del eje Z.
+- Marlin continúa planificando X/Y de forma estándar y el control especial se aplica únicamente en los puntos intervenidos.
 
-## Hardware Abstraction Layer (HAL)
+## Características principales
 
-Marlin includes an abstraction layer to provide a common API for all the platforms it targets. This allows Marlin code to address the details of motion and user interface tasks at the lowest and highest levels with no system overhead, tying all events directly to the hardware clock.
+| Subsistema | Implementación |
+| --- | --- |
+| Movimiento X | Dos motores paso a paso gestionados con el soporte nativo de segundo motor de Marlin |
+| Movimiento Y | Un motor paso a paso controlado por el planner cartesiano |
+| Movimiento Z | Dos pistones hidráulicos con mando independiente de subida y bajada |
+| Realimentación | Dos encoders absolutos conectados por RS485 mediante Modbus RTU |
+| Conversión de altura | Funciones trigonométricas calibradas individualmente para cada encoder |
+| Corrección geométrica | Tabla de 50 puntos e interpolación lineal para compensar X en función de Z |
+| Arcos | Aplicación de la corrección acumulada sobre movimientos `G2/G3` y ajustes de continuidad entre segmentos |
+| Interfaz | Pantalla RepRap Discount Full Graphic, tarjeta SD y menús de movimiento ampliados |
+| Operación manual | Botonera física para X, Y y Z, con estabilización de los pistones por realimentación |
+| Seguridad | Parada de emergencia, apagado explícito de electroválvulas e indicadores de estado |
 
-Every new HAL opens up a world of hardware. At this time we need HALs for RP2040 and the Duet3D family of boards. A HAL that wraps an RTOS is an interesting concept that could be explored. Did you know that Marlin includes a Simulator that can run on Windows, macOS, and Linux? Join the Discord to help move these sub-projects forward!
+## Funcionamiento del eje Z
 
-### Supported Platforms
+Cuando un comando `G0` o `G1` contiene una coordenada Z, el firmware:
 
-  Platform|MCU|Example Boards
-  --------|---|-------
-  [Arduino AVR](//www.arduino.cc/)|ATmega|RAMPS, Melzi, RAMBo
-  [Teensy++ 2.0](//www.microchip.com/en-us/product/AT90USB1286)|AT90USB1286|Printrboard
-  [Arduino Due](//www.arduino.cc/en/Guide/ArduinoDue)|SAM3X8E|RAMPS-FD, RADDS, RAMPS4DUE
-  [ESP32](//github.com/espressif/arduino-esp32)|ESP32|FYSETC E4, E4d@BOX, MRR
-  [LPC1768](//www.nxp.com/products/processors-and-microcontrollers/arm-microcontrollers/general-purpose-mcus/lpc1700-cortex-m3/512-kb-flash-64-kb-sram-ethernet-usb-lqfp100-package:LPC1768FBD100)|ARM® Cortex-M3|MKS SBASE, Re-ARM, Selena Compact
-  [LPC1769](//www.nxp.com/products/processors-and-microcontrollers/arm-microcontrollers/general-purpose-mcus/lpc1700-cortex-m3/512-kb-flash-64-kb-sram-ethernet-usb-lqfp100-package:LPC1769FBD100)|ARM® Cortex-M3|Smoothieboard, Azteeg X5 mini, TH3D EZBoard
-  [STM32F103](//www.st.com/en/microcontrollers-microprocessors/stm32f103.html)|ARM® Cortex-M3|Malyan M200, GTM32 Pro, MKS Robin, BTT SKR Mini
-  [STM32F401](//www.st.com/en/microcontrollers-microprocessors/stm32f401.html)|ARM® Cortex-M4|ARMED, Rumba32, SKR Pro, Lerdge, FYSETC S6, Artillery Ruby
-  [STM32F7x6](//www.st.com/en/microcontrollers-microprocessors/stm32f7x6.html)|ARM® Cortex-M7|The Borg, RemRam V1
-  [STM32G0B1RET6](//www.st.com/en/microcontrollers-microprocessors/stm32g0x1.html)|ARM® Cortex-M0+|BigTreeTech SKR mini E3 V3.0
-  [STM32H743xIT6](//www.st.com/en/microcontrollers-microprocessors/stm32h743-753.html)|ARM® Cortex-M7|BigTreeTech SKR V3.0, SKR EZ V3.0, SKR SE BX V2.0/V3.0
-  [SAMD51P20A](//www.adafruit.com/product/4064)|ARM® Cortex-M4|Adafruit Grand Central M4
-  [Teensy 3.5](//www.pjrc.com/store/teensy35.html)|ARM® Cortex-M4|
-  [Teensy 3.6](//www.pjrc.com/store/teensy36.html)|ARM® Cortex-M4|
-  [Teensy 4.0](//www.pjrc.com/store/teensy40.html)|ARM® Cortex-M7|
-  [Teensy 4.1](//www.pjrc.com/store/teensy41.html)|ARM® Cortex-M7|
-  Linux Native|x86/ARM/etc.|Raspberry Pi
-  [All supported boards](//marlinfw.org/docs/hardware/boards.html#boards-list)|All platforms|All boards
+1. Sincroniza el planner y espera que finalicen los movimientos X/Y pendientes.
+2. Limita el destino a la altura mecánica permitida.
+3. Determina si cada pistón debe subir o bajar.
+4. Activa las electroválvulas correspondientes.
+5. Lee continuamente ambos encoders y convierte sus ángulos a milímetros.
+6. Detiene cada pistón de manera independiente cuando alcanza el destino.
+7. Apaga todas las salidas de Z y actualiza la posición interna.
+8. Calcula y acumula la corrección geométrica que debe aplicarse sobre X.
 
-## Marlin Support
+La corrección utilizada en cada cambio de altura responde a:
 
-The Issue Queue is reserved for Bug Reports and Feature Requests. Please use the following resources for help with configuration and troubleshooting:
+```text
+ΔX = corrección(Z nueva) - corrección(Z anterior)
+```
 
-- [Marlin Documentation](//marlinfw.org) - Official Marlin documentation
-- [Marlin Discord](//discord.com/servers/marlin-firmware-461605380783472640) - Discuss issues with Marlin users and developers
-- Facebook Group ["Marlin Firmware"](//www.facebook.com/groups/1049718498464482/)
-- RepRap.org [Marlin Forum](//forums.reprap.org/list.php?415)
-- Facebook Group ["Marlin Firmware for 3D Printers"](//www.facebook.com/groups/3Dtechtalk/)
-- [Marlin Configuration](//www.youtube.com/results?search_query=marlin+configuration) on YouTube
+El valor se acumula internamente para mover la estructura a la posición física correcta sin alterar la coordenada X lógica informada al usuario.
 
-## Contributing Patches
+## Hardware y comunicaciones
 
-You can contribute patches by submitting a Pull Request to the ([bugfix-2.1.x](//github.com/MarlinFirmware/Marlin/tree/bugfix-2.1.x)) branch.
+| Elemento | Configuración |
+| --- | --- |
+| Unidad de control | ATmega2560 |
+| Placa lógica | `BOARD_R3_Shield` |
+| Comunicación con el host | Puerto serie principal a 115200 baudios |
+| Bus de encoders | `Serial3`, RS485 a 9600 baudios |
+| Protocolo | Modbus RTU con cálculo y verificación CRC16 |
+| Área lógica configurada | X: -12000 a 12000 mm · Y: -6000 a 6000 mm |
+| Límite de control del eje Z | 3400 mm |
+| Resolución de movimiento | X: 47.7 pasos/mm · Y: 26.78 pasos/mm |
 
-- We use branches named with a "bugfix" or "dev" prefix to fix bugs and integrate new features.
-- Follow the [Coding Standards](//marlinfw.org/docs/development/coding_standards.html) to gain points with the maintainers.
-- Please submit Feature Requests and Bug Reports to the [Issue Queue](//github.com/MarlinFirmware/Marlin/issues/new/choose). See above for user support.
-- Whenever you add new features, be sure to add one or more build tests to `buildroot/tests`. Any tests added to a PR will be run within that PR on GitHub servers as soon as they are pushed. To minimize iteration be sure to run your new tests locally, if possible.
-  - Local build tests:
-    - All: `make tests-config-all-local`
-    - Single: `make tests-config-single-local TEST_TARGET=...`
-  - Local build tests in Docker:
-    - All: `make tests-config-all-local-docker`
-    - Single: `make tests-config-all-local-docker TEST_TARGET=...`
-  - To run all unit test suites:
-    - Using PIO: `platformio run -t test-marlin`
-    - Using Make: `make unit-test-all-local`
-    - Using Docker + make: `maker unit-test-all-local-docker`
-  - To run a single unit test suite:
-    - Using PIO: `platformio run -t marlin_<test-suite-name>`
-    - Using make: `make unit-test-single-local TEST_TARGET=<test-suite-name>`
-    - Using Docker + make: `maker unit-test-single-local-docker TEST_TARGET=<test-suite-name>`
-- If your feature can be unit tested, add one or more unit tests. For more information see our documentation on [Unit Tests](test).
+### Asignación principal de pines
 
-## Contributors
+| Función | Pines |
+| --- | --- |
+| Motor X | STEP 54 · DIR 55 · ENABLE 56 |
+| Motor X2 | STEP 58 · DIR 57 · ENABLE 59 |
+| Motor Y | STEP 60 · DIR 61 · ENABLE 63 |
+| Pistón Z1 | DOWN 42 · UP 44 |
+| Pistón Z2 | DOWN 46 · UP 48 |
+| Control RS485 | DE/RE 2 |
+| Indicadores | Verde 4 · Amarillo 5 · Rojo 6 |
+| Botón de emergencia | 12 |
+| Salidas auxiliares | Variador 11 · Clapeta 13 |
 
-Marlin is constantly improving thanks to a huge number of contributors from all over the world bringing their specialties and talents. Huge thanks are due to [all the contributors](//github.com/MarlinFirmware/Marlin/graphs/contributors) who regularly patch up bugs, help direct traffic, and basically keep Marlin from falling apart. Marlin's continued existence would not be possible without them.
+El mapa completo, incluidos la botonera, el display y la tarjeta SD, se encuentra en [`pins_R3_Shield.h`](Marlin/src/pins/board_propia/pins_R3_Shield.h).
 
-Marlin Firmware original logo design by Ahmet Cem TURAN [@ahmetcemturan](//github.com/ahmetcemturan).
+## Indicadores y seguridad
 
-## Project Leadership
+| Elemento | Función |
+| --- | --- |
+| LED verde | Firmware inicializado y en ejecución |
+| LED amarillo | Movimiento activo en X, Y o Z |
+| LED rojo | Estado de parada por emergencia |
+| Botón de emergencia | Detiene el planner, cambia los indicadores y lleva el firmware al estado de parada |
+| `M112` | Apaga las cuatro salidas de los pistones antes de ejecutar la parada total de Marlin |
 
-Name|Role|Link|Donate
-----|----|----|----
-🇺🇸 Scott Lahteine|Project Lead|[[@thinkyhead](//github.com/thinkyhead)]|[💸 Donate](//marlinfw.org/docs/development/contributing.html#donate)
-🇺🇸 Roxanne Neufeld|Admin|[[@Roxy-3D](//github.com/Roxy-3D)]|
-🇺🇸 Keith Bennett|Admin|[[@thisiskeithb](//github.com/thisiskeithb)]|[💸 Donate](//github.com/sponsors/thisiskeithb)
-🇺🇸 Jason Smith|Admin|[[@sjasonsmith](//github.com/sjasonsmith)]|
-🇧🇷 Victor Oliveira|Admin|[[@rhapsodyv](//github.com/rhapsodyv)]|
-🇬🇧 Chris Pepper|Admin|[[@p3p](//github.com/p3p)]|
-🇳🇿 Peter Ellens|Admin|[[@ellensp](//github.com/ellensp)]|[💸 Donate](//ko-fi.com/ellensp)
-🇺🇸 Bob Kuhn|Admin|[[@Bob-the-Kuhn](//github.com/Bob-the-Kuhn)]|
-🇳🇱 Erik van der Zalm|Founder|[[@ErikZalm](//github.com/ErikZalm)]|
+La parada implementada por software complementa al circuito de seguridad de la máquina; no lo reemplaza.
 
-## Star History
+## Comandos G-code relevantes
 
-<a id="starchart" href="https://star-history.com/#MarlinFirmware/Marlin&Date">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=MarlinFirmware/Marlin&type=Date&theme=dark" />
-    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=MarlinFirmware/Marlin&type=Date" />
-    <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=MarlinFirmware/Marlin&type=Date" />
-  </picture>
-</a>
+| Comando | Comportamiento en esta adaptación |
+| --- | --- |
+| `G0` / `G1` | Ejecutan X/Y mediante el planner e interceptan Z para controlar los pistones con los encoders |
+| `G2` / `G3` | Mantienen los movimientos circulares y trasladan el destino X lógico a su coordenada física corregida |
+| `G28` | Pone en cero los encoders antes de comenzar el procedimiento de homing |
+| `G29` | Informa X lógica, Y, Z y los ángulos actuales de ambos encoders |
+| `G30 X… Y… A… B…` | Impone las coordenadas iniciales X/Y y los ángulos A/B para recuperar el estado de la máquina |
+| `M0` / `M1` | Sincronizan el movimiento, llevan la salida auxiliar al estado de pausa y esperan la reanudación |
+| `M3` / `M4` | Desactivan o activan la salida auxiliar asociada al variador/clapeta |
+| `M112` | Apaga las electroválvulas y realiza la parada total |
 
-## License
+Ejemplo de consulta y restauración de estado:
 
-Marlin is published under the [GPL license](/LICENSE) because we believe in open development. The GPL comes with both rights and obligations. Whether you use Marlin firmware as the driver for your open or closed-source product, you must keep Marlin open, and you must provide your compatible Marlin source code to end users upon request. The most straightforward way to comply with the Marlin license is to make a fork of Marlin on Github, perform your modifications, and direct users to your modified fork.
+```gcode
+G29
+G30 X1250.0 Y840.0 A31.2 B31.0
+```
+
+Los valores del ejemplo son ilustrativos y deben reemplazarse por las coordenadas y ángulos obtenidos en la máquina.
+
+## Pantalla y operación manual
+
+La pantalla gráfica conserva los menús de Marlin y agrega incrementos de movimiento de **1000 mm** y **5000 mm**, adecuados para las dimensiones de la impresora. La coordenada X mostrada se corrige antes de convertirse a texto, por lo que representa la posición lógica de impresión y no el desplazamiento físico acumulado.
+
+La botonera externa permite:
+
+- desplazar X/Y mediante pequeños comandos `G1` encolados;
+- accionar manualmente ambos pistones para subir o bajar Z;
+- conservar y estabilizar la altura alcanzada al soltar los botones.
+
+## Compilación y carga
+
+### Requisitos
+
+- Visual Studio Code.
+- Extensión PlatformIO IDE.
+- Cable USB y controladores correspondientes al ATmega2560.
+
+### Procedimiento
+
+1. Abrir la carpeta raíz del repositorio en Visual Studio Code.
+2. Seleccionar el entorno PlatformIO `mega2560`.
+3. Compilar el firmware:
+
+   ```bash
+   pio run -e mega2560
+   ```
+
+4. Conectar la controladora y cargarlo:
+
+   ```bash
+   pio run -e mega2560 -t upload
+   ```
+
+El archivo compilado se genera en `.pio/build/mega2560/firmware.hex`.
+
+## Archivos clave
+
+| Archivo | Responsabilidad principal |
+| --- | --- |
+| [`Configuration.h`](Marlin/Configuration.h) | Placa, comunicación, dimensiones, movimientos, display y constantes propias |
+| [`Configuration_adv.h`](Marlin/Configuration_adv.h) | Funciones avanzadas, arcos, watchdog y control directo de pines |
+| [`MarlinCore.cpp`](Marlin/src/MarlinCore.cpp) | RS485, encoders, inicialización, botonera, estabilización y emergencia |
+| [`G0_G1.cpp`](Marlin/src/gcode/motion/G0_G1.cpp) | Control bloqueante de Z y compensación geométrica de X |
+| [`G2_G3.cpp`](Marlin/src/gcode/motion/G2_G3.cpp) | Corrección y continuidad de movimientos circulares |
+| [`planner.cpp`](Marlin/src/module/planner.cpp) | Estado compartido y accionamiento de los pistones |
+| [`pins_R3_Shield.h`](Marlin/src/pins/board_propia/pins_R3_Shield.h) | Mapa de pines específico de la controladora |
+| [`status_screen_DOGM.cpp`](Marlin/src/lcd/dogm/status_screen_DOGM.cpp) | Presentación de las coordenadas lógicas en pantalla |
+
+Las intervenciones realizadas para esta máquina están señaladas en el código con la etiqueta `BALTA`, lo que facilita su localización y mantenimiento.
+
+## Licencia y atribución
+
+Este proyecto es una adaptación de [Marlin Firmware 2.1.2.5](https://github.com/MarlinFirmware/Marlin), desarrollado por la comunidad Marlin y basado a su vez en Sprinter y grbl. El logotipo original de Marlin Firmware fue diseñado por Ahmet Cem TURAN ([@ahmetcemturan](https://github.com/ahmetcemturan)).
+
+Marlin is published under the [GPL license](LICENSE) because we believe in open development. The GPL comes with both rights and obligations. Whether you use Marlin firmware as the driver for your open or closed-source product, you must keep Marlin open, and you must provide your compatible Marlin source code to end users upon request. The most straightforward way to comply with the Marlin license is to make a fork of Marlin on GitHub, perform your modifications, and direct users to your modified fork.
