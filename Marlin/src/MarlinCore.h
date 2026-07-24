@@ -99,4 +99,4 @@ extern float h2_mm;
 void encoders();
 void leer_encoder();
 bool zero_encoders();
-bool set_encoders_height_mm(float height_mm);
+bool set_encoders_angle(float degrees, float degrees2);

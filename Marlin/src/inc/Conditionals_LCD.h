@@ -38,7 +38,7 @@
  * These defines must be simple constants for use in REPEAT, etc.
  */
 #if EXTRUDERS
-  #define HAS_EXTRUDERS 1
+  //#define HAS_EXTRUDERS 1
   #if EXTRUDERS > 1
     #define HAS_MULTI_EXTRUDER 1
   #endif

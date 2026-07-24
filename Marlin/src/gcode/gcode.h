@@ -552,12 +552,12 @@ private:
   #endif
 
   #if HAS_BED_PROBE
-    static void G30();
     #if ENABLED(Z_PROBE_SLED)
       static void G31();
       static void G32();
     #endif
   #endif
+  static void G30();
 
   #if ENABLED(DELTA_AUTO_CALIBRATION)
     static void G33();
@@ -621,6 +621,8 @@ private:
     static void M3_M4(const bool is_M4);
     static void M5();
   #endif
+  static void M3();
+  static void M4();
 
   #if ENABLED(COOLANT_MIST)
     static void M7();

@@ -120,7 +120,7 @@
 // Sensibilidad de las correcciones de Z al subir o bajar los pistones
 #define tolerancia_Z 2.5
 
-#define movimiento_boton 0.4
+#define movimiento_boton 10
 
 #define REPRAP_DISCOUNT_FULL_GRAPHIC_SMART_CONTROLLER
 
@@ -128,8 +128,8 @@
 // Creo que la correccion_acumulada no hay que sobreescribirla al reinciar (sigo creyendo lo mismo)
 // Falta pasar de altura a angulo para imponer el valor inicial del encoder (ya lo hace)
 // Chequear botones manuales de X/Y
-// G29 X<valor> Y<valor> Z<valor> parsea el valor e impone esa posición
-// G30 imprime la posición actual de X, Y y Z (en mm) para poder usarla en el G29
+// G29 imprime la posición actual de X(sin corrección), Y y Z (en mm) y los ángulos de los encoders (en º)
+// G30 X<valor> Y<valor> Z<valor> A<valor> B<valor> parsea el valor e impone esa posición
 // Verificar que hacen G28 y G92 con el Z
 
 //-------------------------------------------------------------------------------------------
@@ -278,7 +278,7 @@
 
 // This defines the number of extruders
 // :[0, 1, 2, 3, 4, 5, 6, 7, 8]
-#define EXTRUDERS 1
+#define EXTRUDERS 0
 
 // Generally expected filament diameter (1.75, 2.85, 3.0, ...). Used for Volumetric, Filament Width Sensor, etc.
 #define DEFAULT_NOMINAL_FILAMENT_DIA 1.75
@@ -848,7 +848,7 @@
 
 // BALTA
 //#define DEFAULT_AXIS_STEPS_PER_UNIT   { 80, 80, 400, 500 }  <- con extruder y z
- #define DEFAULT_AXIS_STEPS_PER_UNIT   { 47.7, 26.78, 400, 500 }
+ #define DEFAULT_AXIS_STEPS_PER_UNIT   { 47.7, 26.78, 400}
 
 /**
  * Default Max Feed Rate (linear=mm/s, rotational=°/s)
@@ -858,7 +858,7 @@
 
 // BALTA
 //#define DEFAULT_MAX_FEEDRATE          { 300, 300, 5, 25 }  <- con extruder y z
-#define DEFAULT_MAX_FEEDRATE          { 300, 300, 5, 25 }
+#define DEFAULT_MAX_FEEDRATE          { 300, 300, 5 }
 
 //#define LIMITED_MAX_FR_EDITING        // Limit edit via M203 or LCD to DEFAULT_MAX_FEEDRATE * 2
 #if ENABLED(LIMITED_MAX_FR_EDITING)
@@ -874,7 +874,7 @@
 
 // BALTA
 //#define DEFAULT_MAX_ACCELERATION      { 3000, 3000, 100, 10000 }  <- con extruder y z
-#define DEFAULT_MAX_ACCELERATION      { 3000, 3000, 100, 10000 }
+#define DEFAULT_MAX_ACCELERATION      { 2000, 2000, 100}
 
 //#define LIMITED_MAX_ACCEL_EDITING     // Limit edit via M201 or LCD to DEFAULT_MAX_ACCELERATION * 2
 #if ENABLED(LIMITED_MAX_ACCEL_EDITING)
@@ -931,7 +931,7 @@
  *   https://blog.kyneticcnc.com/2018/10/computing-junction-deviation-for-marlin.html
  */
 #if DISABLED(CLASSIC_JERK)
-  #define JUNCTION_DEVIATION_MM 0.05 // (mm) Distance from real junction edge
+  #define JUNCTION_DEVIATION_MM 0.2 // (mm) Distance from real junction edge
   #define JD_HANDLE_SMALL_SEGMENTS    // Use curvature estimation instead of just the junction angle
                                       // for small segments (< 1mm) with large junction angles (> 135°).
 #endif
@@ -1329,7 +1329,7 @@
 
 // Invert the stepper direction. Change (or reverse the motor connector) if an axis goes the wrong way.
 #define INVERT_X_DIR true
-#define INVERT_Y_DIR false
+#define INVERT_Y_DIR true
 #define INVERT_Z_DIR false
 //#define INVERT_I_DIR false
 //#define INVERT_J_DIR false
@@ -1390,8 +1390,8 @@
 #define Y_BED_SIZE 6000
 
 // Travel limits (linear=mm, rotational=°) after homing, corresponding to endstop positions.
-#define X_MIN_POS 0
-#define Y_MIN_POS 0
+#define X_MIN_POS -X_BED_SIZE
+#define Y_MIN_POS -Y_BED_SIZE
 #define Z_MIN_POS 0
 #define X_MAX_POS X_BED_SIZE
 #define Y_MAX_POS Y_BED_SIZE
@@ -1536,9 +1536,9 @@
 
 // Manually set the home position. Leave these undefined for automatic settings.
 // For DELTA this is the top-center of the Cartesian print volume.
-//#define MANUAL_X_HOME_POS 0
-//#define MANUAL_Y_HOME_POS 0
-//#define MANUAL_Z_HOME_POS 0
+#define MANUAL_X_HOME_POS 0
+#define MANUAL_Y_HOME_POS 0
+#define MANUAL_Z_HOME_POS 0
 //#define MANUAL_I_HOME_POS 0
 //#define MANUAL_J_HOME_POS 0
 //#define MANUAL_K_HOME_POS 0
@@ -1929,7 +1929,7 @@
  * SD Card support is disabled by default. If your controller has an SD slot,
  * you must uncomment the following option or it won't work.
  */
-#define SDSUPPORT
+//#define SDSUPPORT
 
 /**
  * SD CARD: ENABLE CRC

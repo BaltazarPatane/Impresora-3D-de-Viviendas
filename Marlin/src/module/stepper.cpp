@@ -2201,6 +2201,13 @@ uint32_t Stepper::block_phase_isr() {
         }
       #endif
       TERN_(HAS_FILAMENT_RUNOUT_DISTANCE, runout.block_completed(current_block));
+
+      // BALTA
+      // Si terminó un bloque que movía X o Y, apago el LED.
+      if (TEST(axis_did_move, X_AXIS) || TEST(axis_did_move, Y_AXIS))
+        extDigitalWrite(LED_AMARILLO, 255);
+        hal.set_pwm_duty(LED_AMARILLO, 255);
+
       discard_current_block();
     }
     else {
@@ -2556,6 +2563,12 @@ uint32_t Stepper::block_phase_isr() {
       //if (current_block->steps.b) SBI(axis_bits, Y_HEAD);
       //if (current_block->steps.c) SBI(axis_bits, Z_HEAD);
       axis_did_move = axis_bits;
+
+      // BALTA
+      // Prendo el LED solamente si el bloque que empezó a ejecutarse mueve X o Y.
+      if (TEST(axis_did_move, X_AXIS) || TEST(axis_did_move, Y_AXIS))
+        extDigitalWrite(LED_AMARILLO, 0);
+        hal.set_pwm_duty(LED_AMARILLO, 0);
 
       // No acceleration / deceleration time elapsed so far
       acceleration_time = deceleration_time = 0;

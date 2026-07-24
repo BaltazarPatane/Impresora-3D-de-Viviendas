@@ -489,7 +489,10 @@ FORCE_INLINE void _draw_axis_value(const AxisEnum axis, const char *value, const
  * Use the PAGE_CONTAINS macros to avoid pointless draw calls.
  */
 void MarlinUI::draw_status_screen() {
-  constexpr int xystorage = TERN(INCH_MODE_SUPPORT, 8, 5);
+  // BALTA
+  //constexpr int xystorage = TERN(INCH_MODE_SUPPORT, 8, 5);
+  constexpr int xystorage = 9;
+
   static char xstring[TERN(LCD_SHOW_E_TOTAL, 12, xystorage)];
   #if HAS_Y_AXIS
     static char ystring[xystorage];
@@ -520,9 +523,26 @@ void MarlinUI::draw_status_screen() {
     #endif
 
     const xyz_pos_t lpos = current_position.asLogical();
-    const bool is_inch = parser.using_inch_units();
+
+    // BALTA
+    const auto format_position = [](char *text, const uint32_t value_100) {
+    const uint32_t integer = value_100 / 100UL;
+    const uint32_t decimals = value_100 % 100UL;
+
+    if (!decimals)
+      sprintf_P(text, PSTR("%lu"), integer);
+    else if (!(decimals % 10UL))
+      sprintf_P(text, PSTR("%lu.%lu"), integer, decimals / 10UL);
+    else
+      sprintf_P(text, PSTR("%lu.%02lu"), integer, decimals);
+  };
+
+    [[maybe_unused]] const bool is_inch = parser.using_inch_units();
     #if HAS_Z_AXIS
-      strcpy(zstring, is_inch ? ftostr42_52(LINEAR_UNIT(lpos.z)) : ftostr52sp(lpos.z));
+      // BALTA
+      //strcpy(zstring, is_inch ? ftostr42_52(LINEAR_UNIT(lpos.z)) : ftostr52sp(lpos.z));
+      const uint32_t z_100 = uint32_t(ABS(lpos.z) * 100.0f + 0.5f);
+      format_position(zstring, z_100);
     #endif
 
     if (show_e_total) {
@@ -533,10 +553,16 @@ void MarlinUI::draw_status_screen() {
     }
     else {
       // BALTA
-      float x_modificado = lpos.x - Planner::correccion_acumulada_x; 
+      //strcpy(xstring, is_inch ? ftostr53_63(LINEAR_UNIT(lpos.x)) : ftostr4sign(lpos.x));
+      //TERN_(HAS_Y_AXIS, strcpy(ystring, is_inch ? ftostr53_63(LINEAR_UNIT(lpos.y)) : ftostr4sign(lpos.y)));
 
-      strcpy(xstring, is_inch ? ftostr53_63(LINEAR_UNIT(x_modificado)) : ftostr4sign(x_modificado));
-      TERN_(HAS_Y_AXIS, strcpy(ystring, is_inch ? ftostr53_63(LINEAR_UNIT(lpos.y)) : ftostr4sign(lpos.y)));
+      const float x_modificado = lpos.x - Planner::correccion_acumulada_x;
+
+      const uint32_t x_100 = uint32_t(ABS(x_modificado) * 100.0f + 0.5f);
+      const uint32_t y_100 = uint32_t(ABS(lpos.y) * 100.0f + 0.5f);
+
+      format_position(xstring, x_100);
+      format_position(ystring, y_100);
     }
 
     #if ENABLED(FILAMENT_LCD_DISPLAY)
@@ -810,16 +836,21 @@ void MarlinUI::draw_status_screen() {
 
       #else
 
-        if (show_e_total) {
-          #if ENABLED(LCD_SHOW_E_TOTAL)
-            _draw_axis_value(E_AXIS, xstring, true);
-            lcd_put_u8str(F("       "));
-          #endif
-        }
-        else {
-          _draw_axis_value(X_AXIS, xstring, blink);
-          TERN_(HAS_Y_AXIS, _draw_axis_value(Y_AXIS, ystring, blink));
-        }
+        // BALTA
+        // Valores de X, Y, Z en pantalla
+
+        set_font(FONT_STATUSMENU);
+
+        lcd_put_lchar(0, XYZ_BASELINE, 'X');
+        lcd_put_u8str(26 - (utf8_strlen(xstring) * MENU_FONT_WIDTH) / 2, XYZ_BASELINE, xstring);
+
+        lcd_put_lchar(46, XYZ_BASELINE, 'Y');
+        lcd_put_u8str(72 - (utf8_strlen(ystring) * MENU_FONT_WIDTH) / 2, XYZ_BASELINE, ystring);
+
+        lcd_put_lchar(92, XYZ_BASELINE, 'Z');
+        lcd_put_u8str(113 - (utf8_strlen(zstring) * MENU_FONT_WIDTH) / 2, XYZ_BASELINE, zstring);
+
+        set_font(FONT_STATUSMENU);
 
       #endif
       
