@@ -67,16 +67,25 @@ La separación entre coordenadas lógicas y físicas permite conservar archivos 
 
 ## Funcionamiento del eje Z
 
-Cuando un comando `G0` o `G1` contiene una coordenada Z, el firmware:
+```mermaid
+flowchart TD
+    A["Comando G0/G1"] --> B{"¿Contiene un valor de Z?"}
 
-1. Sincroniza el planner y espera que finalicen los movimientos X/Y pendientes.
-2. Limita el destino a la altura mecánica permitida.
-3. Determina si cada pistón debe subir o bajar.
-4. Activa las electroválvulas correspondientes.
-5. Lee continuamente ambos encoders y convierte sus ángulos a milímetros.
-6. Detiene cada pistón de manera independiente cuando alcanza el destino.
-7. Apaga todas las salidas de Z y actualiza la posición interna.
-8. Calcula y acumula la corrección geométrica que debe aplicarse sobre X.
+    B -- "No" --> J["Aplicar corrección acumulada en X y esperar siguiente movimiento"]
+    B -- "Sí" --> C["Sincronizar el planner y esperar los movimientos pendientes"]
+
+    C --> D["Limitar Z y determinar subida o bajada"]
+    D --> E["Activar electroválvulas y marcar ambos pistones como ocupados"]
+    E --> F["Leer los encoders y comparar cada altura con el destino"]
+
+    F --> G["Si el pistón llegó detenerlo individualmente y liberarlo"]
+    G --> H{"¿Ambos pistones están libres?"}
+
+    H -- "No" --> F
+    H -- "Sí" --> I["Apagar todas las salidas de Z y actualizar la posición interna"]
+
+    I --> J
+```
 
 La corrección utilizada en cada cambio de altura responde a:
 
