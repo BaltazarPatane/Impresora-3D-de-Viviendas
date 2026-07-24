@@ -74,9 +74,9 @@
 // Creo que tenemos pero necesitamos los pines
 
 ///////////////////////////
-#define E0_STEP_PIN                            28  //
-#define E0_DIR_PIN                             28  //
-#define E0_ENABLE_PIN                          28  //
+//#define E0_STEP_PIN                            28  //
+//#define E0_DIR_PIN                             28  //
+//#define E0_ENABLE_PIN                          28  //
 //////////////////////////
 
 
@@ -87,20 +87,27 @@
 #define X_MIN_PIN                              28
 #define X_MAX_PIN                              28
 
-#define Y_MIN_PIN                              8  // (D8)
-#define Y_MAX_PIN                              9  // (D9)
+#define Y_MIN_PIN                              28  // (D8)
+#define Y_MAX_PIN                              28  // (D9)
 
 // BALTA (AGREGAR)
-// Este todavía no lo implementé
-#define Z_MIN_PIN                              10  // (D10)
+#define Z_MIN_PIN                              28  // (D10)
 #define Z_MAX_PIN                              28
 
-#define Z_BTN_SUBIR                            30
-#define Z_BTN_BAJAR                            32
 #define X_BTN_SUBIR                            34
 #define X_BTN_BAJAR                            10
 #define Y_BTN_SUBIR                            40
 #define Y_BTN_BAJAR                            38
+#define Z_BTN_SUBIR                            30
+#define Z_BTN_BAJAR                            32
+
+#define LED_VERDE                              4
+#define LED_AMARILLO                           5
+#define LED_ROJO                               6
+#define BOTON_EMERGENCIA                       12
+
+#define VARIADOR                               11
+#define CLAPETA                                13
 
 //
 // Display (los pines en 5 son del display)

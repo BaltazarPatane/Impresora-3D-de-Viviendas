@@ -387,8 +387,12 @@ void plan_arc(
     planner.apply_leveling(raw);
   #endif
 
-  hints.curve_radius = 0;
-  hints.safe_exit_speed_sqr = 0.0f;
+  // BALTA
+  //hints.curve_radius = 0;
+  //hints.safe_exit_speed_sqr = 0.0f;
+  hints.curve_radius = radius;
+  hints.safe_exit_speed_sqr = sq(scaled_fr_mm_s);
+
   planner.buffer_line(raw, scaled_fr_mm_s, active_extruder, hints);
 
   current_position = cart;
@@ -435,6 +439,14 @@ void GcodeSuite::G2_G3(const bool clockwise) {
   get_destination_from_command();   // Get X Y [Z[I[J[K...]]]] [E] F (and set cutter power)
 
   TERN_(SF_ARC_FIX, relative_mode = relative_mode_backup);
+
+  // BALTA
+  // Aplico la misma corrección acumulada de X que en G0/G1.
+  // Si el G2/G3 trae una X de destino, esa X viene en coordenadas lógicas,
+  // por lo tanto antes de planificar la curva la paso a coordenada física corregida.
+  if (parser.seenval('X')) {
+    destination.x += Planner::correccion_acumulada_x;
+  }
 
   ab_float_t arc_offset = { 0, 0 };
   if (parser.seenval('R')) {

@@ -420,6 +420,9 @@ class Planner {
 
     static volatile float z_anterior;
 
+    static volatile float ang1;
+    static volatile float ang2;
+
     static void z_isr_1();
     static void z_isr_2();
     static void apagar_Z1();

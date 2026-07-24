@@ -334,54 +334,10 @@ void GcodeSuite::dwell(millis_t time) {
 #if !HAS_LEVELING
 
   // BALTA
-  // G29 para imponer manualmente X, Y y la altura inicial del encoder en Z
-  // Uso esperado: G29 X<valor> Y<valor> Z<valor>
+  // G29 para informar X (sin corrección), Y, Z y los ángulos de los encoders
   void GcodeSuite::G29() {
-
-    if (!parser.seenval('X') || !parser.seenval('Y') || !parser.seenval('Z')) {
-      SERIAL_ECHOLNPGM("Error: G29 requiere X<valor> Y<valor> Z<valor>.");
-      return;
-    }
-
-    const float x_inicial_mm = parser.floatval('X');
-    const float y_inicial_mm = parser.floatval('Y');
-    const float encoder_inicial_mm = parser.floatval('Z');
-
-    // Se imponen manualmente las posiciones actuales de X e Y
-    current_position.x = x_inicial_mm;
-    current_position.y = y_inicial_mm;
-
-    // Se sincroniza el planner con la nueva posicion impuesta
-    sync_plan_position();
-
-    // Parte de Z: se mantiene igual que antes, pero usando Z en vez de E
-    if (!set_encoders_height_mm(encoder_inicial_mm)) {
-      SERIAL_ECHOPGM("Error: no se pudo imponer encoder a ");
-      SERIAL_ECHO(encoder_inicial_mm);
-      SERIAL_ECHOLNPGM(" mm.");
-      return;
-    }
-
-
-    SERIAL_ECHOPGM("X inicial impuesto: ");
-    SERIAL_ECHO(x_inicial_mm);
-    SERIAL_ECHOLNPGM(" mm");
-
-    SERIAL_ECHOPGM("Y inicial impuesto: ");
-    SERIAL_ECHO(y_inicial_mm);
-    SERIAL_ECHOLNPGM(" mm");
-
-    SERIAL_ECHOPGM("Altura inicial encoder Z: ");
-    SERIAL_ECHO(encoder_inicial_mm);
-    SERIAL_ECHOLNPGM(" mm");
-  }
-
-#endif
-
-#if !HAS_BED_PROBE
-  void GcodeSuite::G30() {
     SERIAL_ECHOPGM("X: ");
-    SERIAL_ECHO(current_position.x);
+    SERIAL_ECHO(current_position.x - Planner::correccion_acumulada_x);
     SERIAL_ECHOLNPGM(" mm.");
     SERIAL_ECHOPGM("Y: ");
     SERIAL_ECHO(current_position.y);
@@ -389,6 +345,85 @@ void GcodeSuite::dwell(millis_t time) {
     SERIAL_ECHOPGM("Z: ");
     SERIAL_ECHO(current_position.z);
     SERIAL_ECHOLNPGM(" mm.");
+    SERIAL_ECHOPGM("A1: ");
+    SERIAL_ECHO(Planner::ang1);
+    SERIAL_ECHOLNPGM("º.");
+    SERIAL_ECHOPGM("A2: ");
+    SERIAL_ECHO(Planner::ang2);
+    SERIAL_ECHOLNPGM("º.");
+  }
+
+#endif
+
+#if !HAS_BED_PROBE
+
+  // BALTA
+  // G30 para imponer manualmente X, Y y la altura inicial del encoder en Z
+  // Uso esperado: G30 X<valor> Y<valor> A<valor> B<valor>
+  void GcodeSuite::G30() {
+
+    if (!parser.seenval('X') && !parser.seenval('Y') && !parser.seenval('A') && !parser.seenval('B')) {
+      SERIAL_ECHOLNPGM("Error: G30 requiere X<valor> Y<valor> Z<valor> A<valor> B<valor>.");
+      return;
+    }
+
+    const float x_inicial_mm = parser.floatval('X');
+    const float y_inicial_mm = parser.floatval('Y');
+    const float encoder_inicial = parser.floatval('A');
+    const float encoder_inicial2 = parser.floatval('B');
+
+    // Se imponen manualmente las posiciones actuales de X e Y
+    if (parser.seenval('X')) {
+      current_position.x = x_inicial_mm;
+      SERIAL_ECHOPGM("X inicial impuesto: ");
+      SERIAL_ECHO(x_inicial_mm);
+      SERIAL_ECHOLNPGM(" mm");
+    }
+    if (parser.seenval('Y')) {
+      current_position.y = y_inicial_mm;
+      SERIAL_ECHOPGM("Y inicial impuesto: ");
+      SERIAL_ECHO(y_inicial_mm);
+      SERIAL_ECHOLNPGM(" mm");
+    }
+
+    // Se sincroniza el planner con la nueva posicion impuesta
+    sync_plan_position();
+
+    // Parte de Z: se mantiene igual que antes, pero usando Z en vez de E
+    if (parser.seenval('A') || parser.seenval('B')) {
+      if (!set_encoders_angle(encoder_inicial, encoder_inicial2)) {
+        SERIAL_ECHOPGM("Error: no se pudo imponer encoder a ");
+        SERIAL_ECHO(encoder_inicial);
+        SERIAL_ECHOLNPGM("º.");
+        return;
+      }
+      SERIAL_ECHOPGM("Angulo encoder 1 impuesto: ");
+      SERIAL_ECHO(encoder_inicial);
+      SERIAL_ECHOLNPGM("º");
+      SERIAL_ECHOPGM("Angulo encoder 2 impuesto: ");
+      SERIAL_ECHO(encoder_inicial2);
+      SERIAL_ECHOLNPGM("º");
+    }
+  }
+
+#endif
+
+#if !HAS_CUTTER
+
+  // BALTA
+  // M3 para apagar clapeta
+  void GcodeSuite::M3() {
+    //VARIADOR EN ALTO
+    extDigitalWrite(VARIADOR, 0);
+    hal.set_pwm_duty(VARIADOR, 0);
+  }
+
+  // BALTA
+  // M4 para encender clapeta
+  void GcodeSuite::M4() {
+    //VARIADOR EN BAJO
+    extDigitalWrite(VARIADOR, 255);
+    hal.set_pwm_duty(VARIADOR, 255);
   }
 
 #endif
@@ -573,6 +608,11 @@ void GcodeSuite::process_parsed_command(const bool no_ok/*=false*/) {
         case 3: M3_M4(false); break;                              // M3: Turn ON Laser | Spindle (clockwise), set Power | Speed
         case 4: M3_M4(true ); break;                              // M4: Turn ON Laser | Spindle (counter-clockwise), set Power | Speed
         case 5: M5(); break;                                      // M5: Turn OFF Laser | Spindle
+      #else
+        // BALTA
+        // Agregué este comando para poder reanudar la impresora
+        case 3: M3(); break;
+        case 4: M4(); break;
       #endif
 
       #if ENABLED(COOLANT_MIST)

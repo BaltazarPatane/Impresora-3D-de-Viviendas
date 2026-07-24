@@ -163,7 +163,7 @@ float correccionX_desdeZ(float z_mm) {
   return 0.0f;
 }
 
-static float z_anterior = 0.0f;
+//static float z_anterior = 0.0f;
 
 /**
  * G0, G1: Coordinated movement of X Y Z E axes
@@ -200,6 +200,9 @@ void GcodeSuite::G0_G1(TERN_(HAS_FAST_MOVES, const bool fast_move/*=false*/)) {
 
   get_destination_from_command();                 // Get X Y [Z[I[J[K]]]] [E] F (and set cutter power);
 
+  const bool hay_x = parser.seenval('X');
+  const bool hay_z = parser.seenval('Z');
+
   #ifdef G0_FEEDRATE
     if (fast_move) {
       #if ENABLED(VARIABLE_G0_FEEDRATE)
@@ -230,10 +233,10 @@ void GcodeSuite::G0_G1(TERN_(HAS_FAST_MOVES, const bool fast_move/*=false*/)) {
 
   #endif // FWRETRACT
 
-  // Drena la cola del planner y espera que el stepper ISR termine el bloque actual
-  // antes de activar Z. Así ningún eje se mueve mientras dure el while de Z.
-  if (parser.seenval('Z')) {
-    // ESTA ES LA LINEA QUE HAY QUE MODIFICAR SI SE QUIERE QUE LOS EJES SE MUEVAN MIENTRAS SE MUEVE Z 
+  if (NEAR(current_position.x, destination.x) && NEAR(current_position.y, destination.y) && NEAR(current_position.z, destination.z)) return;
+
+  if (hay_z) {
+    // Drena la cola del planner
     planner.synchronize();
 
     // Evitar que quiera irse más arriba de lo que puede
@@ -270,10 +273,26 @@ void GcodeSuite::G0_G1(TERN_(HAS_FAST_MOVES, const bool fast_move/*=false*/)) {
         Planner::subiendo = false;
       }
 
+      extDigitalWrite(LED_AMARILLO, 0);
+      hal.set_pwm_duty(LED_AMARILLO, 0);
       // Se espera a que el pistón llegue a su destino
-      while (Planner::Z_BUSY_1 | Planner::Z_BUSY_2) {
+      while (Planner::Z_BUSY_1 || Planner::Z_BUSY_2) {
         // BALTA
         // Leo los encoders constantemente
+
+        if (READ(BOTON_EMERGENCIA) == HIGH) {
+          extDigitalWrite(LED_ROJO, 0);
+          hal.set_pwm_duty(LED_ROJO, 0);
+          extDigitalWrite(LED_VERDE, 255);
+          hal.set_pwm_duty(LED_VERDE, 255);
+          extDigitalWrite(LED_AMARILLO, 255);
+          hal.set_pwm_duty(LED_AMARILLO, 255);
+          planner.quick_stop();
+          Planner::Z_BUSY_1 = false;
+          Planner::Z_BUSY_2 = false;
+          kill();
+        }
+
         leer_encoder();
 
         // BALTA
@@ -303,20 +322,34 @@ void GcodeSuite::G0_G1(TERN_(HAS_FAST_MOVES, const bool fast_move/*=false*/)) {
       extDigitalWrite(Z2_DOWN_PIN, 0);
       hal.set_pwm_duty(Z2_DOWN_PIN, 0);
 
+      extDigitalWrite(LED_AMARILLO, 255);
+      hal.set_pwm_duty(LED_AMARILLO, 255);
+
 
     #ifdef G0_FEEDRATE
       // Restore the motion mode feedrate
       if (fast_move) feedrate_mm_s = old_feedrate;
     #endif
 
+    // Como los pistones ya llegaron físicamente a Z,
+    // actualizo la posición interna de Marlin.
+    current_position.z = Planner::destino_local_Z;
+    destination.z = current_position.z;
+    sync_plan_position();
+
     double correccion_x = correccionX_desdeZ(Planner::destino_local_Z) - correccionX_desdeZ(Planner::z_anterior);
 
     Planner::correccion_acumulada_x += correccion_x;
+
+    // Esta línea la podría sacar
+    // Entre un comando de Z aislado y el primer comando de X siguiente, la pantalla miente
     destination.x = current_position.x + correccion_x;
+
     Planner::z_anterior = Planner::destino_local_Z;
   }
 
-  if (parser.seenval('X')) {
+  // Si hay X y no es relativo, entonces se le suma la corrección acumulada de X
+  if ((hay_x) && (!axis_is_relative(X_AXIS))) {
     destination.x += Planner::correccion_acumulada_x;
   }
 
@@ -325,6 +358,9 @@ void GcodeSuite::G0_G1(TERN_(HAS_FAST_MOVES, const bool fast_move/*=false*/)) {
   #else
     prepare_line_to_destination();
   #endif
+
+  // Hace que al pausar se hagan máximo 3 comandos
+  while (planner.movesplanned() > 2) idle();
 
   #if ENABLED(NANODLP_Z_SYNC)
     #if ENABLED(NANODLP_ALL_AXIS)

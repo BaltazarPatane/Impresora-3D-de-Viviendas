@@ -113,7 +113,9 @@
 
 // Delay for delivery of first block to the stepper ISR, if the queue contains 2 or
 // fewer movements. The delay is measured in milliseconds, and must be less than 250ms
-#define BLOCK_DELAY_FOR_1ST_MOVE 100U
+// BALTA
+//#define BLOCK_DELAY_FOR_1ST_MOVE 100U
+#define BLOCK_DELAY_FOR_1ST_MOVE 0U
 
 Planner planner;
 
@@ -156,6 +158,9 @@ volatile float Planner::h_inicial_2 = 0;
 volatile float Planner::correccion_acumulada_x = 0;
 
 volatile float Planner::z_anterior = 0;
+
+volatile float Planner::ang1 = 0;
+volatile float Planner::ang2 = 0;
 
 
 // BALTA (Z4)
@@ -3175,15 +3180,6 @@ bool Planner::buffer_segment(const abce_pos_t &abce
 
   // If we are cleaning, do not accept queuing of movements
   if (cleaning_buffer_counter) return false;
-
-  // BALTA (Z2)
-  // Cambio esto para hacer bloqueantes a los pistones
-  // No se encolan movimientos hasta que terminen
-
-  if (Z_BUSY_1) return false;
-  if (Z_BUSY_2) return false;
-
-
 
   // When changing extruders recalculate steps corresponding to the E position
   #if ENABLED(DISTINCT_E_FACTORS)

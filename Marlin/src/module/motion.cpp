@@ -1435,9 +1435,6 @@ FORCE_INLINE void segment_idle(millis_t &next_idle_ms) {
  */
 void prepare_line_to_destination() {
 
-  // Guardo la posición actual del eje X
-  //xyze_pos_t posicion_real_marlin = current_position;
-
   apply_motion_limits(destination); // Constrain the given coordinates to the software endstops.
 
   #if ANY(PREVENT_COLD_EXTRUSION, PREVENT_LENGTHY_EXTRUDE)
@@ -1489,17 +1486,6 @@ void prepare_line_to_destination() {
       line_to_destination_cartesian() // Prepare a linear move in a Cartesian setup.
     #endif
   ) return;
-
-  // BALTA
-  // Si se está haciendo una corrección espero a que se haga y guardo la posición anterior como la actual
-  // Las funciones de sincronización ya venían con el Marlin
-  // Ya no uso más fixing, no lo saco por las dudas nada más
-  //if (Planner::fixing) {
-  //  planner.synchronize(); 
-  //  current_position = posicion_real_marlin;
-  //  sync_plan_position();
-  //}
-  //else
   current_position = destination; // Update the current position of the axis
 }
 

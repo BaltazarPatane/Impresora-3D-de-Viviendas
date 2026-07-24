@@ -49,6 +49,10 @@
  * M1: Conditional stop   - Wait for user button press on LCD
  */
 void GcodeSuite::M0_M1() {
+
+  extDigitalWrite(VARIADOR, 255);
+  hal.set_pwm_duty(VARIADOR, 255);
+
   millis_t ms = 0;
   if (parser.seenval('P')) ms = parser.value_millis();              // Milliseconds to wait
   if (parser.seenval('S')) ms = parser.value_millis_from_seconds(); // Seconds to wait

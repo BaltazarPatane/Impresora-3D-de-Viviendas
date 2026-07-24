@@ -257,6 +257,7 @@
 #endif
 
 PGMSTR(M112_KILL_STR, "M112 Shutdown");
+PGMSTR(BOTON_EMERGENCIA_KILL_STR, "Boton emergencia");
 
 MarlinState marlin_state = MF_INITIALIZING;
 
@@ -459,6 +460,18 @@ bool setCurrentValue(uint8_t id, uint16_t value) {
   return writeSingleRegister(id, 0x000B, value);
 }
 
+// ------------------------------------------------------
+static float normalizeEncoderAngleDeg(float angleDeg) {
+  while (angleDeg < 0.0f) {
+    angleDeg += 360.0f;
+  }
+
+  while (angleDeg >= 360.0f) {
+    angleDeg -= 360.0f;
+  }
+
+  return angleDeg;
+}
 
 // ------------------------------------------------------
 // Convierte un ángulo de 0..360 grados al valor crudo
@@ -485,131 +498,15 @@ bool setCurrentAngleDeg(uint8_t id, float angleDeg) {
 }
 
 // ------------------------------------------------------
-static float normalizeEncoderAngleDeg(float angleDeg) {
-  while (angleDeg < 0.0f) {
-    angleDeg += 360.0f;
-  }
+bool set_encoders_angle(float degrees, float degrees2) {
 
-  while (angleDeg >= 360.0f) {
-    angleDeg -= 360.0f;
-  }
+  const bool ok1 = setCurrentAngleDeg(ENCODER1_ID, degrees);
+  const bool ok2 = setCurrentAngleDeg(ENCODER2_ID, degrees2);
 
-  return angleDeg;
-}
+  Planner::destino_local_Z = heightFromEnc1(degrees);
+  Planner::z_anterior = heightFromEnc1(degrees);
 
-// ------------------------------------------------------
-static float encoderHeightErrorSq(float (*heightFn)(float), float angleDeg, const float target_mm) {
-  const float err = heightFn(normalizeEncoderAngleDeg(angleDeg)) - target_mm;
-  return err * err;
-}
-
-// ------------------------------------------------------
-static float angleFromEncoderHeight(float (*heightFn)(float), const float target_mm, float &error_mm) {
-  static const float ROOT_EPS_MM = 0.001f;
-
-  float prev_angle = 0.0f;
-  float prev_err = heightFn(prev_angle) - target_mm;
-
-  if (fabs(prev_err) <= ROOT_EPS_MM) {
-    error_mm = fabs(prev_err);
-    return prev_angle;
-  }
-
-  for (uint16_t i = 1; i <= 360; i++) {
-    const float angle = (float)i;
-    const float err = heightFn(normalizeEncoderAngleDeg(angle)) - target_mm;
-
-    if (fabs(err) <= ROOT_EPS_MM) {
-      error_mm = fabs(err);
-      return normalizeEncoderAngleDeg(angle);
-    }
-
-    if ((prev_err < 0.0f && err > 0.0f) || (prev_err > 0.0f && err < 0.0f)) {
-      float lo = prev_angle;
-      float hi = angle;
-      float lo_err = prev_err;
-
-      for (uint8_t j = 0; j < 24; j++) {
-        const float mid = (lo + hi) * 0.5f;
-        const float mid_err = heightFn(normalizeEncoderAngleDeg(mid)) - target_mm;
-
-        if ((lo_err < 0.0f && mid_err > 0.0f) || (lo_err > 0.0f && mid_err < 0.0f)) {
-          hi = mid;
-        }
-        else {
-          lo = mid;
-          lo_err = mid_err;
-        }
-      }
-
-      const float best_angle = normalizeEncoderAngleDeg((lo + hi) * 0.5f);
-      error_mm = fabs(heightFn(best_angle) - target_mm);
-      return best_angle;
-    }
-
-    prev_angle = angle;
-    prev_err = err;
-  }
-
-  float best_angle = 0.0f;
-  float best_error = encoderHeightErrorSq(heightFn, best_angle, target_mm);
-
-  for (uint16_t i = 1; i < 360; i++) {
-    const float angle = (float)i;
-    const float error = encoderHeightErrorSq(heightFn, angle, target_mm);
-
-    if (error < best_error) {
-      best_error = error;
-      best_angle = angle;
-    }
-  }
-
-  float lo = best_angle - 1.5f;
-  float hi = best_angle + 1.5f;
-
-  for (uint8_t i = 0; i < 24; i++) {
-    const float third = (hi - lo) / 3.0f;
-    const float m1 = lo + third;
-    const float m2 = hi - third;
-
-    if (encoderHeightErrorSq(heightFn, m1, target_mm) < encoderHeightErrorSq(heightFn, m2, target_mm)) {
-      hi = m2;
-    }
-    else {
-      lo = m1;
-    }
-  }
-
-  best_angle = normalizeEncoderAngleDeg((lo + hi) * 0.5f);
-  error_mm = fabs(heightFn(best_angle) - target_mm);
-  return best_angle;
-}
-
-// ------------------------------------------------------
-bool set_encoders_height_mm(float height_mm) {
-  if (!(height_mm > -1000000.0f && height_mm < 1000000.0f)) {
-    return false;
-  }
-
-  float err1 = 0.0f;
-  float err2 = 0.0f;
-  const float angle1 = angleFromEncoderHeight(heightFromEnc1, height_mm, err1);
-  const float angle2 = angleFromEncoderHeight(heightFromEnc2, height_mm, err2);
-
-  if (err1 > 2.0f || err2 > 2.0f) {
-    return false;
-  }
-
-  const bool ok1 = setCurrentAngleDeg(ENCODER1_ID, angle1);
-  const bool ok2 = setCurrentAngleDeg(ENCODER2_ID, angle2);
-
-  if (ok1 && ok2) {
-    h1_mm = height_mm;
-    h2_mm = height_mm;
-    Planner::destino_local_Z = height_mm;
-    Planner::z_anterior = height_mm;
-    return true;
-  }
+  if (ok1 && ok2) return true;
 
   return false;
 }
@@ -741,8 +638,8 @@ void encoders() {
   digitalWrite(DE_PIN, LOW);
   digitalWrite(RE_PIN, LOW);
 
-  //setZero(ENCODER1_ID);
-  //setZero(ENCODER2_ID);
+  setZero(ENCODER1_ID);
+  setZero(ENCODER2_ID);
 
   setDirection(ENCODER2_ID, 0x0001);
 }
@@ -750,24 +647,30 @@ void encoders() {
 int lectura = 0;
 void leer_encoder() {
 
-  float ang1 = NAN;
-  float ang2 = NAN;
+  Planner::ang1 = NAN;
+  Planner::ang2 = NAN;
 
-  bool ok1 = readAngleFromTotalValue(ENCODER1_ID, ang1);
-  bool ok2 = readAngleFromTotalValue(ENCODER2_ID, ang2);
+  float angulo1 = NAN;
+  float angulo2 = NAN;
+
+  bool ok1 = readAngleFromTotalValue(ENCODER1_ID, angulo1);
+  bool ok2 = readAngleFromTotalValue(ENCODER2_ID, angulo2);
+
+  Planner::ang1 = angulo1;
+  Planner::ang2 = angulo2;
 
   // ==============================
   // CÁLCULO ENCODER 1
   // ==============================
   if (ok1) {
-    h1_mm = heightFromEnc1(ang1);
+    h1_mm = heightFromEnc1(angulo1);
   }
 
   // ==============================
   // CÁLCULO ENCODER 2
   // ==============================
   if (ok2) {
-    h2_mm = heightFromEnc2(ang2);
+    h2_mm = heightFromEnc2(angulo2);
   }
 
   // ==============================
@@ -775,7 +678,7 @@ void leer_encoder() {
   // ==============================
 
   lectura++;
-  if (lectura == 20) {
+  if (lectura == 600) {
     lectura = 0;
     if (!ok1) {
       SERIAL_ECHOPGM("ERR, ");
@@ -785,7 +688,7 @@ void leer_encoder() {
     if (!ok2) {
       SERIAL_ECHOLNPGM("ERR");
     }
-    else {SERIAL_ECHOLN(h2_mm);}
+    else {SERIAL_ECHO(h2_mm); SERIAL_ECHOPGM(", ");}
     
     SERIAL_ECHOLN(Planner::destino_local_Z);
   }
@@ -1308,6 +1211,17 @@ bool z_btn_bajar_estado = true;
  *  - Handle Joystick jogging
  */
 void idle(const bool no_stepper_sleep/*=false*/) {
+
+  if (READ(BOTON_EMERGENCIA) == HIGH) {
+    extDigitalWrite(LED_ROJO, 0);
+    hal.set_pwm_duty(LED_ROJO, 0);
+    extDigitalWrite(LED_VERDE, 255);
+    hal.set_pwm_duty(LED_VERDE, 255);
+    extDigitalWrite(LED_AMARILLO, 255);
+    hal.set_pwm_duty(LED_AMARILLO, 255);
+    planner.quick_stop();
+    kill();
+  }
 
   // BALTA
   // Jog encolado para los botones manuales de X/Y.
@@ -2320,6 +2234,23 @@ void setup() {
   pinMode(Z_BTN_BAJAR, INPUT_PULLUP);
   pinMode(Z_BTN_SUBIR, INPUT_PULLUP);
 
+  pinMode(LED_VERDE, OUTPUT);
+  pinMode(LED_AMARILLO, OUTPUT);
+  pinMode(LED_ROJO, OUTPUT);
+  pinMode(BOTON_EMERGENCIA, INPUT_PULLUP);
+
+  pinMode(VARIADOR, OUTPUT);
+  pinMode(CLAPETA, OUTPUT);
+
+  extDigitalWrite(VARIADOR, 0);
+  hal.set_pwm_duty(VARIADOR, 0);
+
+  extDigitalWrite(LED_AMARILLO, 255);
+  hal.set_pwm_duty(LED_AMARILLO, 255);
+  extDigitalWrite(LED_ROJO,255);
+  hal.set_pwm_duty(LED_ROJO, 255);
+  extDigitalWrite(LED_VERDE, 0);
+  hal.set_pwm_duty(LED_VERDE, 0);
 
   extDigitalWrite(Z1_UP_PIN, 0);
   hal.set_pwm_duty(Z1_UP_PIN, 0);
